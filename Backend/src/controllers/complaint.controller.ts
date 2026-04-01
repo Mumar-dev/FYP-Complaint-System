@@ -386,3 +386,5 @@ export const submitComplaintFeedback = async (request: AuthenticatedRequest, res
     return sendResponse(response, 500, false, 'Server error while submitting feedback');
   }
 };
+
+// minor code structure update
