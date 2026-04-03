@@ -588,3 +588,5 @@ export const getDepartmentHeadDashboard = async (request: AuthenticatedRequest, 
     return sendResponse(response, 500, false, 'Server error extracting dashboard metadata');
   }
 };
+
+// minor code structure update
