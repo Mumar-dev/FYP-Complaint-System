@@ -75,3 +75,5 @@ const userSchema = new Schema<IUser>(
 export const User = mongoose.model<IUser>('User', userSchema);
 
 // code formatting update
+
+// minor code structure update
