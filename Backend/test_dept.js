@@ -7,3 +7,5 @@ mongoose.connect('mongodb://172.17.241.122:27017/cms_db').then(async () => {
   console.log("Found dept:", dept ? dept.name : "null");
   process.exit(0);
 });
+
+// minor code structure update
