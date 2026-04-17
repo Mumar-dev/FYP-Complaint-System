@@ -13,3 +13,5 @@ export interface IDepartment extends Document {
   updatedAt: Date;
 }
 // code formatting update
+
+// minor code structure update
