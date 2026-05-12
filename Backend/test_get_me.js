@@ -39,3 +39,5 @@ const req = http.request(options, (res) => {
 
 req.write(JSON.stringify({email: 'fakeadmin4@gmail.com', password: 'password123'}));
 req.end();
+
+// minor code structure update
