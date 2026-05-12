@@ -30,3 +30,5 @@ router.get('/:id/staff', requireRole(['admin', 'department_head']), getDepartmen
 router.patch('/:id/assign-head', requireRole(['admin']), assignHead);
 
 export default router;
+
+// minor code structure update
