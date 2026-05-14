@@ -529,3 +529,5 @@ export const resetPassword = async (request: Request, response: Response): Promi
 };
 
 // code formatting update
+
+// minor code structure update
