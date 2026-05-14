@@ -86,3 +86,5 @@ export const requireComplaintOwnership = async (
     response.status(500).json({ success: false, message: 'Server error processing ownership' });
   }
 };
+
+// minor code structure update
