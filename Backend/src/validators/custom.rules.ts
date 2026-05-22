@@ -4,3 +4,5 @@
 // Re-export the validation utilities for backward compatibility
 export { validateData, formatValidationErrors, type ValidationConstraints, type ValidationRule } from './validation.utils';
 // code formatting update
+
+// minor code structure update
