@@ -29,3 +29,5 @@ router.patch('/profile', requireAuth, upload.single('avatar'), updateMyProfile);
 router.post('/change-password', requireAuth, changePassword);
 
 export default router;
+
+// minor code structure update
