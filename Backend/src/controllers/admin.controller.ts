@@ -1,8 +1,10 @@
 import { Response } from 'express';
 import { User } from '../models/user.model';
 import { Complaint } from '../models/complaint.model';
+import { Department } from '../models/department.model';
 import { ActivityLog } from '../models/activityLog.model';
 import { sendEmail } from '../utils/email';
+import { NotificationService } from '../services/notification.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { sendResponse } from '../utils/response';
 
@@ -11,24 +13,45 @@ import { sendResponse } from '../utils/response';
  */
 export const getGlobalAnalytics = async (request: AuthenticatedRequest, response: Response): Promise<any> => {
   try {
-    const { startDate, endDate } = request.query;
+    const { startDate, endDate, allTime, departmentId, range } = request.query;
 
-    const start = startDate ? new Date(startDate as string) : null;
-    const end = endDate ? new Date(endDate as string) : null;
-
-    if (end) {
-      end.setHours(23, 59, 59, 999);
-    }
+    const isAllTime = startDate === 'all' || endDate === 'all' || allTime === 'true' || range === 'All Time';
 
     const matchStage: any = {};
 
-    if (!start || !end) {
-      const now = new Date();
-      const past = new Date();
-      past.setDate(now.getDate() - 30);
-      matchStage.createdAt = { $gte: past, $lte: now };
-    } else {
-      matchStage.createdAt = { $gte: start, $lte: end };
+    if (departmentId && departmentId !== 'all') {
+      const mongoose = require('mongoose');
+      matchStage.departmentId = mongoose.Types.ObjectId.isValid(departmentId)
+        ? new mongoose.Types.ObjectId(departmentId as string)
+        : departmentId;
+    }
+
+    if (!isAllTime) {
+      if (range === '7D') {
+        const now = new Date();
+        const past = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        matchStage.createdAt = { $gte: past, $lte: now };
+      } else if (range === '30D') {
+        const now = new Date();
+        const past = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        matchStage.createdAt = { $gte: past, $lte: now };
+      } else {
+        const start = startDate ? new Date(startDate as string) : null;
+        const end = endDate ? new Date(endDate as string) : null;
+
+        if (end) {
+          end.setHours(23, 59, 59, 999);
+        }
+
+        if (!start || !end) {
+          const now = new Date();
+          const past = new Date();
+          past.setDate(now.getDate() - 30);
+          matchStage.createdAt = { $gte: past, $lte: now };
+        } else {
+          matchStage.createdAt = { $gte: start, $lte: end };
+        }
+      }
     }
 
     const defaultDateBounds = new Date();
@@ -243,6 +266,129 @@ export const getGlobalAnalytics = async (request: AuthenticatedRequest, response
     const result = await Complaint.aggregate(pipeline);
     const resolvedPayload = result[0];
 
+    // Fetch all active departments to ensure complete coverage even with 0 complaints
+    const activeDepartments = await Department.find({ isActive: { $ne: false } })
+      .select('_id name')
+      .lean();
+
+    const complaintDeptMap = new Map<string, any>();
+    (resolvedPayload.departments || []).forEach((d: any) => {
+      if (d._id) {
+        complaintDeptMap.set(d._id.toString(), d);
+      }
+    });
+
+    const mergedDepartments = activeDepartments.map((dept) => {
+      const deptIdStr = dept._id.toString();
+      const stats = complaintDeptMap.get(deptIdStr);
+
+      if (stats && stats.totalComplaints > 0) {
+        return {
+          _id: dept._id,
+          departmentName: dept.name,
+          totalComplaints: stats.totalComplaints,
+          resolved: stats.resolved,
+          slaBreached: stats.slaBreached,
+          avgResolutionTimeHours: stats.avgResolutionTimeHours ?? null,
+          complianceRate: stats.complianceRate ?? null
+        };
+      }
+
+      return {
+        _id: dept._id,
+        departmentName: dept.name,
+        totalComplaints: 0,
+        resolved: 0,
+        slaBreached: 0,
+        avgResolutionTimeHours: null,
+        complianceRate: null
+      };
+    });
+
+    // Also include any complaints attributed to null or unassigned departments if any
+    (resolvedPayload.departments || []).forEach((d: any) => {
+      if (!d._id || !activeDepartments.some(ad => ad._id.toString() === d._id.toString())) {
+        mergedDepartments.push({
+          _id: d._id || 'unassigned',
+          departmentName: d.departmentName || 'General / Unassigned',
+          totalComplaints: d.totalComplaints || 0,
+          resolved: d.resolved || 0,
+          slaBreached: d.slaBreached || 0,
+          avgResolutionTimeHours: d.avgResolutionTimeHours ?? null,
+          complianceRate: d.totalComplaints > 0 ? (d.complianceRate ?? null) : null
+        });
+      }
+    });
+
+    // Fetch all real staff & workforce members to align with Workforce Directory (~18)
+    const allStaffMembers = await User.find({ 
+      role: { $in: ['staff', 'supervisor', 'department_head'] },
+      employmentStatus: { $ne: 'TERMINATED' } 
+    })
+      .select('_id email role profile.fullName departmentId')
+      .populate('departmentId', 'name')
+      .lean();
+
+    const complaintStaffMap = new Map<string, any>();
+    (resolvedPayload.staff || []).forEach((s: any) => {
+      if (s._id) {
+        complaintStaffMap.set(s._id.toString(), s);
+      }
+    });
+
+    const mergedStaff = allStaffMembers.map((member: any) => {
+      const memberIdStr = member._id.toString();
+      const stats = complaintStaffMap.get(memberIdStr);
+      const staffName = member.profile?.fullName || member.email?.split('@')[0] || 'Staff Member';
+      const deptName = member.departmentId?.name || (member.departmentId ? 'Assigned' : 'Unassigned');
+
+      if (stats && stats.assignedCount > 0) {
+        return {
+          _id: member._id,
+          staffName: stats.staffName || staffName,
+          email: member.email,
+          role: member.role,
+          departmentName: deptName,
+          assignedCount: stats.assignedCount,
+          resolvedCount: stats.resolvedCount,
+          slaBreaches: stats.slaBreaches,
+          avgResolutionTimeHours: stats.avgResolutionTimeHours ?? null,
+          complianceRate: stats.complianceRate ?? null
+        };
+      }
+
+      return {
+        _id: member._id,
+        staffName,
+        email: member.email,
+        role: member.role,
+        departmentName: deptName,
+        assignedCount: 0,
+        resolvedCount: 0,
+        slaBreaches: 0,
+        avgResolutionTimeHours: null,
+        complianceRate: null
+      };
+    });
+
+    // Also include any complaint assignedStaffId not in the active staff query if any exist
+    (resolvedPayload.staff || []).forEach((s: any) => {
+      if (s._id && !allStaffMembers.some(sm => sm._id.toString() === s._id.toString())) {
+        mergedStaff.push({
+          _id: s._id,
+          staffName: s.staffName || 'Staff Member',
+          email: s.email,
+          role: 'staff',
+          departmentName: 'General',
+          assignedCount: s.assignedCount || 0,
+          resolvedCount: s.resolvedCount || 0,
+          slaBreaches: s.slaBreaches || 0,
+          avgResolutionTimeHours: s.avgResolutionTimeHours ?? null,
+          complianceRate: s.assignedCount > 0 ? (s.complianceRate ?? null) : null
+        });
+      }
+    });
+
     const safeOverview = resolvedPayload.overview[0] || {
       totalComplaints: 0,
       resolvedComplaints: 0,
@@ -267,8 +413,8 @@ export const getGlobalAnalytics = async (request: AuthenticatedRequest, response
         overview: safeOverview,
         slaMetrics: { ...safeSla, slaComplianceRate },
         trends: resolvedPayload.trends || [],
-        departments: resolvedPayload.departments || [],
-        staff: resolvedPayload.staff || []
+        departments: mergedDepartments,
+        staff: mergedStaff
     });
   } catch (error) {
     const err = error as Error;
@@ -329,26 +475,44 @@ export const approveUser = async (request: AuthenticatedRequest, response: Respo
       newValue: 'active'
     });
 
-    // Fire explicit Welcome Email
+    const loginUrl = process.env.CLIENT_URL ? `${process.env.CLIENT_URL}/login` : 'http://localhost:5173/login';
+
+    // 1. Fire dedicated Resident Welcome / Approval Email
     try {
       await sendEmail({
         to: user.email,
-        subject: "Your Account Has Been Approved 🎉",
-        message: `Welcome to the community! 👋
+        subject: "Your Resident Account Has Been Approved 🎉",
+        message: `Hello ${user.profile?.fullName || 'Resident'},
         
 Great news! 🎉
 
-Your account has been officially approved by our administration team. You now have full, unrestricted access to the Complaint Management System!
+Your resident account application has been verified and officially approved by the administration team. You now have full access to the Resident Portal.
 
-You can immediately log in to your dashboard to submit new complaints, track ongoing resolutions natively in real time, and communicate directly with staff.
+You can log in to your account at any time using the link below:
+${loginUrl}
 
-We are incredibly excited to have you onboard. If you ever need assistance navigating the portal, our support team is always just a click away.
+From your dashboard, you can submit maintenance complaints, track resolution progress in real time, and view updates from our department staff.
+
+Welcome to the community! If you need any assistance, our administration team is here to help.
 
 Warm regards,
-The Complaint Management Team`
+Community Administration Team`
       });
     } catch (emailErr) {
-      console.error("[Mail Error]:", emailErr);
+      console.error("[Resident Approval Mail Error]:", emailErr);
+    }
+
+    // 2. Send In-App Notification for Resident
+    try {
+      await NotificationService.send({
+        userId: user._id,
+        type: 'resident_approved',
+        title: 'Account Approved',
+        message: 'Your resident account has been approved. Welcome to the portal!',
+        idempotencyKey: `resident-approved-${user._id}`
+      });
+    } catch (notifErr) {
+      console.error("[Resident Approval Notification Error]:", notifErr);
     }
 
     return sendResponse(response, 200, true, 'User has been officially approved and activated.');
@@ -391,26 +555,26 @@ export const rejectUser = async (request: AuthenticatedRequest, response: Respon
       newValue: reason ? `suspended: ${reason}` : 'suspended'
     });
 
-    // Fire polite Rejection Email with Context
+    // Fire dedicated polite Rejection Email with Context
     try {
       await sendEmail({
         to: user.email,
-        subject: "Update Regarding Your Registration Application",
+        subject: "Update Regarding Your Resident Registration Application",
         message: `Hello ${user.profile?.fullName || 'Resident'},
         
-Thank you for reaching out and registering with the Complaint Management System.
+Thank you for submitting your registration application for the Resident Portal.
 
-Our administration team has reviewed your application carefully. Unfortunately, we are unable to approve your account access at this specific time.
+Our administration team has reviewed your application and verification details. Unfortunately, your registration could not be approved at this time.
 
-${reason ? `Reason for Rejection: ${reason}\n\n` : ''}If you believe this was a mistake or you have updated documentation, you are welcome to attempt registration again using this same email address perfectly.
+${reason ? `Reason provided by Administration:\n"${reason}"\n\n` : ''}If you have corrected documents or believe this decision was made in error, you may re-apply using your existing account credentials, or reach out directly to the management office for assistance.
 
 Thank you for your understanding.
 
 Best regards,
-The Administration Team`
+Community Administration Team`
       });
     } catch (emailErr) {
-      console.error("[Mail Error]:", emailErr);
+      console.error("[Resident Rejection Mail Error]:", emailErr);
     }
 
     return sendResponse(response, 200, true, 'User has been officially rejected and suspended.');
