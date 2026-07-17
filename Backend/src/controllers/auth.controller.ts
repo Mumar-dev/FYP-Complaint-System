@@ -7,6 +7,9 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { sendEmail } from '../utils/email';
 import { uploadBufferToCloudinary } from '../utils/cloudinary';
 import { sendResponse } from '../utils/response';
+import { NotificationService } from '../services/notification.service';
+
+const normalizeCnic = (value: string): string => value.replace(/\D/g, '');
 
 /**
  * Handle resident and staff registration securely.
@@ -31,6 +34,22 @@ export const register = async (request: Request, response: Response): Promise<an
     if (phone) builtProfile.phone = phone;
     if (post) builtProfile.position = post;
     builtProfile.proofDocumentUrl = proofDocumentUrl;
+
+    if (builtProfile.cnic) {
+      const normalizedCnic = normalizeCnic(builtProfile.cnic);
+      if (normalizedCnic.length !== 13) {
+        return sendResponse(response, 400, false, 'CNIC must contain exactly 13 digits.');
+      }
+
+      const existingCnic = await User.findOne({
+        'profile.cnic': new RegExp(normalizedCnic.split('').join('[^0-9]*'))
+      });
+      if (existingCnic) {
+        return sendResponse(response, 400, false, 'CNIC already exists in the system.');
+      }
+
+      builtProfile.cnic = normalizedCnic;
+    }
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -101,7 +120,22 @@ The Complaint Management Team`
           console.error("Email failed:", emailError);
         }
 
-        const msg = role === 'resident' 
+        // Notify all active Admins of new pending resident registration
+        if (role === 'resident') {
+          try {
+            const residentName = builtProfile.fullName || existingUser.email;
+            await NotificationService.notifyAdmins({
+              type: 'resident_registered',
+              title: 'New Resident Registration',
+              message: `**New Resident Approval Needed:** ${residentName} registered and is pending verification.`,
+              idempotencyKey: `resident-reg-${existingUser._id}`
+            });
+          } catch (notifErr) {
+            console.error('[AUTH CONTROLLER] Failed to notify admins about new resident:', notifErr);
+          }
+        }
+
+    const msg = role === 'resident' 
           ? 'Account application re-submitted successfully. Waiting for admin approval.' 
           : 'Account updated successfully.';
         return sendResponse(response, 200, true, msg);
@@ -122,6 +156,18 @@ The Complaint Management Team`
       accountStatus: role === 'resident' ? 'pending' : 'active', // Force manual admin approval only for residents
       statusHistory: [{ status: role === 'resident' ? 'pending' : 'active', changedAt: new Date() }]
     });
+
+    try {
+      await ActivityLog.create({
+        action: 'user_registered',
+        performedBy: user._id,
+        targetUser: user._id,
+        newValue: role === 'resident' ? 'pending' : 'active',
+        meta: { role }
+      });
+    } catch (logError) {
+      console.error('[AUTH CONTROLLER] Registration audit log failed:', logError);
+    }
 
     // Non-blocking mail request hook executed explicitly after Native DB commitment
     try {
@@ -148,6 +194,21 @@ The Complaint Management Team`
       }
     } catch (emailError) {
       console.error("Email failed:", emailError);
+    }
+
+    // Notify all active Admins of new pending resident registration
+    if (role === 'resident') {
+      try {
+        const residentName = builtProfile.fullName || user.email;
+        await NotificationService.notifyAdmins({
+          type: 'resident_registered',
+          title: 'New Resident Registration',
+          message: `**New Resident Approval Needed:** ${residentName} registered and is pending verification.`,
+          idempotencyKey: `resident-reg-${user._id}`
+        });
+      } catch (notifErr) {
+        console.error('[AUTH CONTROLLER] Failed to notify admins about new resident:', notifErr);
+      }
     }
 
     const msg = role === 'resident' 
@@ -194,8 +255,16 @@ export const login = async (request: Request, response: Response): Promise<any> 
       return sendResponse(response, 401, false, 'Invalid credentials');
     }
 
+    if (user.employmentStatus === 'TERMINATED' || (user as any).isDeleted) {
+      return sendResponse(response, 401, false, 'Account has been deleted or revoked.');
+    }
+
+    if (user.employmentStatus === 'SUSPENDED' || user.accountStatus === 'suspended') {
+      return sendResponse(response, 403, false, 'Your account is suspended. Please contact administration.');
+    }
+
     if (user.accountStatus !== 'active') {
-      return sendResponse(response, 403, false, 'Account is pending or suspended');
+      return sendResponse(response, 403, false, 'Account is pending or revoked.');
     }
 
     const isMatch = await bcrypt.compare(password, user.password!);
@@ -271,8 +340,10 @@ export const refresh = async (request: Request, response: Response): Promise<any
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET as string) as { id: string };
     const user = await User.findById(decoded.id);
 
-    if (!user || user.accountStatus !== 'active' || !user.refreshToken) {
-      return sendResponse(response, 401, false, 'Unauthorized - Invalid session alignment');
+    if (!user || user.accountStatus !== 'active' || user.employmentStatus === 'TERMINATED' || (user as any).isDeleted || !user.refreshToken) {
+      response.clearCookie('accessToken');
+      response.clearCookie('refreshToken');
+      return sendResponse(response, 401, false, 'Unauthorized - Account has been deleted or revoked.');
     }
 
     // Explicitly compare the plaintext refresh cookie against hashed refresh table payload
@@ -346,28 +417,37 @@ export const getMe = async (request: AuthenticatedRequest, response: Response): 
  */
 export const updateMyProfile = async (request: AuthenticatedRequest, response: Response): Promise<any> => {
   try {
-    const { fullName, phone, block, houseNumber } = request.body;
+    const { fullName, phone, block, houseNumber, deleteAvatar, removeAvatar } = request.body;
     
-    // Strict requirement: Full name is conceptually mandatory for profile sync
-    if (!fullName) {
-      return sendResponse(response, 400, false, 'Full name is strictly required.');
-    }
-
     const user = await User.findById(request.user?._id);
     if (!user) {
       return sendResponse(response, 404, false, 'Identity not found in database.');
+    }
+
+    // Strict requirement: Full name must exist on user profile or in request
+    const effectiveFullName = fullName || user.profile?.fullName;
+    if (!effectiveFullName) {
+      return sendResponse(response, 400, false, 'Full name is strictly required.');
     }
 
     // Safety: ensure profile + address containers exist
     if (!user.profile) user.profile = { cnic: (user as any).profile?.cnic || 'N/A' };
     if (!user.profile.address) user.profile.address = { block: '', houseNumber: '' };
 
+    // Handle Delete Avatar Request
+    if (deleteAvatar === 'true' || deleteAvatar === true || removeAvatar === 'true' || removeAvatar === true) {
+      user.set('profile.profileImage', undefined);
+      user.set('profile.avatar', undefined);
+      console.log('[AUTH CONTROLLER] Avatar removed for:', user.email);
+    }
+
     // Handle Binary Avatar Payload via Cloudinary Integration
     if (request.file) {
       try {
         const avatarUrl = await uploadBufferToCloudinary(request.file.buffer, 'profiles');
-        // Use Mongoose .set() to ensure nested property updates bypass any schema strictness issues
+        // Set both profileImage and avatar so any frontend/backend reference finds the image immediately
         user.set('profile.profileImage', avatarUrl);
+        user.set('profile.avatar', avatarUrl);
       } catch (cloudinaryErr) {
         console.error('[PROFILE SYNC] Cloudinary Upload Failure:', cloudinaryErr);
       }
@@ -375,9 +455,9 @@ export const updateMyProfile = async (request: AuthenticatedRequest, response: R
 
     // Secure Field Mapping (Manual keys prevent over-posting vulnerabilities)
     if (fullName) user.set('profile.fullName', fullName);
-    if (phone) user.set('profile.phone', phone);
-    if (block) user.set('profile.address.block', block);
-    if (houseNumber) user.set('profile.address.houseNumber', houseNumber);
+    if (phone !== undefined) user.set('profile.phone', phone);
+    if (block !== undefined) user.set('profile.address.block', block);
+    if (houseNumber !== undefined) user.set('profile.address.houseNumber', houseNumber);
 
     // Explicitly mark the profile object as modified for Mongoose
     user.markModified('profile');
@@ -386,7 +466,7 @@ export const updateMyProfile = async (request: AuthenticatedRequest, response: R
     await user.save();
 
     console.log('[AUTH CONTROLLER] Profile Updated for:', user.email);
-    console.log('[AUTH CONTROLLER] Updated Profile Image:', user.profile?.profileImage);
+    console.log('[AUTH CONTROLLER] Updated Profile Image:', user.profile?.profileImage || user.profile?.avatar);
     
     // Return safe object (Schema .toObject already handles sensitive field stripping)
     return sendResponse(response, 200, true, 'Profile synchronized successfully! ✅', user);
@@ -527,7 +607,3 @@ export const resetPassword = async (request: Request, response: Response): Promi
     return sendResponse(response, 500, false, 'Server error');
   }
 };
-
-// code formatting update
-
-// minor code structure update
