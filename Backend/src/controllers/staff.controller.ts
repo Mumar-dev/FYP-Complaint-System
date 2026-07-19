@@ -20,24 +20,34 @@ export const getStaffDashboard = async (request: AuthenticatedRequest, response:
     const [totalAssigned, inProgress, resolvedToday, slaAtRisk, myComplaints] = await Promise.all([
       Complaint.countDocuments({ assignedStaffId: userId }),
       Complaint.countDocuments({ assignedStaffId: userId, status: 'in_progress' }),
-      Complaint.countDocuments({ 
-        assignedStaffId: userId, 
-        status: 'resolved', 
-        resolvedAt: { $gte: startOfToday } 
+      Complaint.countDocuments({
+        assignedStaffId: userId,
+        status: 'resolved',
+        resolvedAt: { $gte: startOfToday }
       }),
       Complaint.countDocuments({
         assignedStaffId: userId,
         status: { $nin: ['resolved', 'closed'] },
-        slaDeadline: { $gte: now, $lte: twoHoursFromNow }
+        $or: [
+          { slaDeadline: { $lte: twoHoursFromNow } },
+          { slaBreached: true }
+        ]
       }),
       Complaint.find({ assignedStaffId: userId })
-        .select('_id title status priority slaDeadline createdAt')
+        .select('_id complaintId title status priority slaDeadline createdAt')
         .sort({ createdAt: -1 })
         .limit(20)
         .lean()
     ]);
 
     const dashboardData = {
+      staff: {
+        _id: user._id,
+        fullName: user.profile?.fullName,
+        email: user.email,
+        rank: user.rank || 'junior',
+        designation: user.designation || user.profile?.position || 'Staff'
+      },
       stats: {
         totalAssigned,
         inProgress,
