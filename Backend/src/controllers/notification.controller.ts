@@ -38,3 +38,17 @@ export const markAsRead = async (request: AuthenticatedRequest, response: Respon
     return sendResponse(response, 500, false, 'Server error marking notification as read');
   }
 };
+
+export const markAllAsRead = async (request: AuthenticatedRequest, response: Response): Promise<any> => {
+  try {
+    const user = request.user!;
+    await Notification.updateMany(
+      { userId: user._id, read: false },
+      { $set: { read: true } }
+    );
+    return sendResponse(response, 200, true, 'All notifications marked as read');
+  } catch (error) {
+    console.error('[markAllAsRead] Error:', error);
+    return sendResponse(response, 500, false, 'Server error marking all notifications as read');
+  }
+};
