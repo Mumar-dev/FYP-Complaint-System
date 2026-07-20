@@ -13,6 +13,7 @@ export interface IActivityLog extends Document {
     from?: string;
     to?: string;
     assignedTo?: Types.ObjectId;
+    assignedToName?: string;
     message?: string;
   };
   createdAt: Date;
