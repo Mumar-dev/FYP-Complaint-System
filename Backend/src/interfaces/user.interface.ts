@@ -16,9 +16,18 @@ export interface IUserProfile {
   avatar?: string;
   profileImage?: string;
   address?: IAddress;
+  emergencyContact?: {
+    name?: string;
+    relationship?: string;
+    phone?: string;
+  };
 }
 
-export type UserRole = 'admin' | 'superadmin' | 'department_head' | 'staff' | 'resident';
+export type UserRole = 'admin' | 'superadmin' | 'department_head' | 'supervisor' | 'staff' | 'resident';
+
+export type EmploymentStatus = 'ACTIVE' | 'INACTIVE' | 'ON_LEAVE' | 'SUSPENDED' | 'RESIGNED' | 'TERMINATED';
+
+export type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'probation';
 
 export interface IStatusHistory {
   status: 'active' | 'pending' | 'suspended';
@@ -30,7 +39,8 @@ export interface IUser extends Document {
   email: string;
   password?: string;
   role: UserRole;
-  rank?: 'junior' | 'standard' | 'senior';
+  rank?: 'junior' | 'senior' | 'team_lead' | 'lead' | 'supervisor' | 'head';
+  previousRank?: string;
   accountStatus: 'active' | 'pending' | 'suspended';
   statusHistory: IStatusHistory[];
   applicationVersion: number;
@@ -39,7 +49,15 @@ export interface IUser extends Document {
   approvedBy?: Types.ObjectId | string;
   rejectedBy?: Types.ObjectId | string;
   profile: IUserProfile;
-  departmentId?: Types.ObjectId | string; // Only used if the user is 'staff'
+  departmentId?: Types.ObjectId | string; // Used if user belongs to a department
+
+  // HR Extension Fields (Unified CMS Employee Identity)
+  employeeId?: string; // Formatted unique readable string: e.g. EMP-2026-0001
+  designation?: string;
+  employmentStatus?: EmploymentStatus;
+  employmentType?: EmploymentType;
+  joiningDate?: Date;
+
   lastLogin?: Date;
   socketId?: string;
   refreshToken?: string;
@@ -48,4 +66,3 @@ export interface IUser extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
-// code formatting update
