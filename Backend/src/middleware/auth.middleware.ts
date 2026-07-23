@@ -52,11 +52,27 @@ export const requireAuth = async (
       return;
     }
 
-    // Check if account is active
-    if (user.accountStatus !== 'active') {
-      response.status(403).json({
+    // Check if account is active or suspended/terminated
+    if (user.employmentStatus === 'TERMINATED' || (user as any).isDeleted) {
+      response.status(401).json({
         success: false,
-        message: 'Forbidden - Account is not active'
+        message: 'Unauthorized - Your account has been deleted or revoked.'
+      });
+      return;
+    }
+
+    if (user.employmentStatus === 'SUSPENDED' || user.accountStatus === 'suspended') {
+      response.status(401).json({
+        success: false,
+        message: 'Unauthorized - Your account has been suspended or revoked. Please contact administration.'
+      });
+      return;
+    }
+
+    if (user.accountStatus !== 'active') {
+      response.status(401).json({
+        success: false,
+        message: 'Unauthorized - Account is not active or has been revoked.'
       });
       return;
     }
@@ -76,6 +92,16 @@ export const requireAuth = async (
 };
 
 /**
+ * Normalizes role aliases and casing to canonical lower_snake_case roles
+ */
+const normalizeRole = (role?: string): string => {
+  if (!role) return '';
+  const clean = role.trim().toLowerCase();
+  if (clean === 'super_admin') return 'superadmin';
+  return clean;
+};
+
+/**
  * Higher-order middleware factory intercepting execution based on explicit User Roles arrays.
  */
 export const requireRole = (roles: string[]) => {
@@ -88,7 +114,16 @@ export const requireRole = (roles: string[]) => {
       return;
     }
 
-    if (!roles.includes(request.user.role)) {
+    const userRole = normalizeRole(request.user.role);
+    const normalizedAllowedRoles = roles.map(r => normalizeRole(r));
+
+    // Support superadmin having access wherever admin is allowed
+    const isAllowed = 
+      normalizedAllowedRoles.includes(userRole) ||
+      (userRole === 'superadmin' && normalizedAllowedRoles.includes('admin'));
+
+    if (!isAllowed) {
+      console.warn(`[AUTH FORBIDDEN] User "${request.user.email}" with role "${request.user.role}" attempted action requiring [${roles.join(', ')}]`);
       response.status(403).json({
         success: false,
         message: `Forbidden - Insufficient permissions. Target execution requires explicitly one of: ${roles.join(', ')}`
