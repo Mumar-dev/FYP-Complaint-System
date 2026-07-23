@@ -3,11 +3,18 @@ import { AuthenticatedRequest } from './auth.middleware';
 import { UserRole } from '../interfaces/user.interface';
 import { Complaint } from '../models/complaint.model';
 
+const normalizeRole = (role?: string): string => {
+  if (!role) return '';
+  const clean = role.trim().toLowerCase();
+  if (clean === 'super_admin') return 'superadmin';
+  return clean;
+};
+
 /**
  * Validates that the logged-in user holds one of the required roles.
  */
-export const requireRole = (allowedRoles: UserRole[]) => {
-  const rolesArray = allowedRoles;
+export const requireRole = (allowedRoles: (UserRole | string)[]) => {
+  const normalizedAllowed = allowedRoles.map(r => normalizeRole(r));
 
   return (request: AuthenticatedRequest, response: Response, next: NextFunction): void => {
     const user = request.user;
@@ -17,11 +24,16 @@ export const requireRole = (allowedRoles: UserRole[]) => {
        return;
     }
 
+    const userRole = normalizeRole(user.role);
+    const isAllowed = 
+      normalizedAllowed.includes(userRole) ||
+      (userRole === 'superadmin' && normalizedAllowed.includes('admin'));
+
     // Check if user's role matches any in the allowed array
-    if (!rolesArray.includes(user.role as UserRole)) {
+    if (!isAllowed) {
        response.status(403).json({ 
         success: false, 
-        message: `Forbidden - Requires one of the following roles: ${rolesArray.join(', ')}` 
+        message: `Forbidden - Requires one of the following roles: ${allowedRoles.join(', ')}` 
       });
        return;
     }
@@ -86,5 +98,3 @@ export const requireComplaintOwnership = async (
     response.status(500).json({ success: false, message: 'Server error processing ownership' });
   }
 };
-
-// minor code structure update
