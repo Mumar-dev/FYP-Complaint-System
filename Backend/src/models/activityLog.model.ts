@@ -37,6 +37,7 @@ const activityLogSchema = new Schema<IActivityLog>(
       from: { type: String },
       to: { type: String },
       assignedTo: { type: Schema.Types.ObjectId, ref: 'User' },
+      assignedToName: { type: String },
       message: { type: String }
     }
   },
