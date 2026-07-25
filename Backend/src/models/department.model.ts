@@ -4,6 +4,7 @@ import { IDepartment } from '../interfaces/department.interface';
 const departmentSchema = new Schema<IDepartment>(
   {
     name: { type: String, required: true, unique: true },
+    code: { type: String, trim: true, uppercase: true, sparse: true },
     keywords: { type: [String], default: [] },
     positions: { type: [String], default: [] },
     slaTargetHours: { 
@@ -18,8 +19,17 @@ const departmentSchema = new Schema<IDepartment>(
     },
     isActive: { 
       type: Boolean, 
-      default: true 
+      default: false 
     },
+    approvalStatus: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'pending',
+      index: true
+    },
+    rejectionReason: { type: String, trim: true },
+    approvedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    approvedAt: { type: Date },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
