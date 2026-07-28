@@ -6,6 +6,7 @@ import {
   createStaff,
   assignStaffDepartment,
   promoteStaff,
+  demoteStaff,
   removeStaffFromDepartment,
   getUserById,
   makeDepartmentHead,
@@ -17,13 +18,15 @@ const router = express.Router();
 router.use(requireAuth);
 
 router.get('/staff', requireRole(['department_head', 'admin']), getStaffMembers);
-router.post('/', requireRole(['admin', 'department_head']), createStaff);
+router.post('/', requireRole(['admin', 'superadmin']), createStaff);
+router.patch('/assign-department', requireRole(['admin', 'department_head']), assignStaffDepartment);
 
 // Generic ID route - must come after specific named routes
 router.get('/:id', getUserById);
 router.patch('/:id', requireRole(['admin', 'department_head']), updateUser);
 router.patch('/:id/assign-department', requireRole(['admin', 'department_head']), assignStaffDepartment);
 router.patch('/:id/promote', requireRole(['admin']), promoteStaff);
+router.patch('/:id/demote', requireRole(['admin']), demoteStaff);
 router.patch('/:id/remove-department', requireRole(['admin']), removeStaffFromDepartment);
 router.patch('/:id/make-head', requireRole(['admin']), makeDepartmentHead);
 
