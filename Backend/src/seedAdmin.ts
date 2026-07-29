@@ -46,7 +46,7 @@ const users = [
 
 const seedSystem = async () => {
   try {
-    const LOCAL_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cms_db';
+    const LOCAL_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/cms_db';
     await mongoose.connect(LOCAL_URI);
     console.log('Connected to Database');
 
