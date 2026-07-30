@@ -1,94 +1,182 @@
-import mongoose from 'mongoose';
+import { Types } from 'mongoose';
 import { Complaint } from '../models/complaint.model';
 import { User } from '../models/user.model';
+import { ComplaintAssignment } from '../models/complaintAssignment.model';
 import { ActivityLog } from '../models/activityLog.model';
-import { Notification } from '../models/notification.model';
+import { NotificationService } from './notification.service';
+import { AuditService } from './audit.service';
 
-export const processAssignment = async (complaintId: string, staffId: string, performedByUserId: any) => {
-  try {
-    const complaint = await Complaint.findById(complaintId);
-    if (!complaint) {
-      throw new Error('Complaint not found');
+export class AssignmentService {
+  /**
+   * Assigns primary staff and optional supporting staff to a complaint.
+   * Validates department membership, prevents duplicate active assignments, and records assignment history.
+   */
+  static async assignComplaint(params: {
+    complaintId: Types.ObjectId | string;
+    primaryStaffId: Types.ObjectId | string;
+    supportingStaffIds?: (Types.ObjectId | string)[];
+    assignedBy: Types.ObjectId | string;
+    assignedByRole: string;
+    reason?: string;
+  }) {
+    const complaint = await Complaint.findById(params.complaintId);
+    if (!complaint) throw new Error('Complaint not found');
+
+    const primaryStaff = await User.findById(params.primaryStaffId);
+    if (!primaryStaff || primaryStaff.role !== 'staff') {
+      throw new Error('Assigned primary user must be a valid staff member');
     }
 
-    if (complaint.status !== 'pending_assignment' && complaint.status !== 'assigned') {
-      throw new Error('Invalid assignment state');
+    const isPrimaryActive =
+      (primaryStaff.employmentStatus === 'ACTIVE' || (!primaryStaff.employmentStatus && primaryStaff.accountStatus === 'active') || primaryStaff.accountStatus === 'active') &&
+      primaryStaff.employmentStatus !== 'SUSPENDED' &&
+      primaryStaff.employmentStatus !== 'TERMINATED' &&
+      primaryStaff.accountStatus !== 'suspended' &&
+      !(primaryStaff as any).isDeleted;
+
+    if (!isPrimaryActive) {
+      throw new Error(
+        primaryStaff.employmentStatus === 'SUSPENDED' || primaryStaff.accountStatus === 'suspended'
+          ? 'Cannot assign complaint to a suspended staff member'
+          : primaryStaff.employmentStatus === 'TERMINATED'
+          ? 'Cannot assign complaint to a terminated staff member'
+          : 'Primary staff account is not active'
+      );
     }
 
-    let isReassignment = false;
-    let oldStaffId = null;
+    // Verify staff department membership matches complaint department
+    if (
+      primaryStaff.departmentId &&
+      primaryStaff.departmentId.toString() !== complaint.departmentId.toString()
+    ) {
+      throw new Error('Primary staff does not belong to the department assigned to this complaint');
+    }
 
-    if (complaint.assignedStaffId) {
-      isReassignment = true;
-      oldStaffId = complaint.assignedStaffId;
+    // Validate supporting staff
+    const validSupportingIds: Types.ObjectId[] = [];
+    if (params.supportingStaffIds && params.supportingStaffIds.length > 0) {
+      for (const supId of params.supportingStaffIds) {
+        if (supId.toString() === params.primaryStaffId.toString()) continue; // Skip if same as primary
 
-      if (complaint.reassignmentCount >= 3) {
-        throw new Error('Reassignment limit reached');
-      }
+        const supStaff = await User.findById(supId);
+        const isSupActive =
+          supStaff &&
+          supStaff.role === 'staff' &&
+          (supStaff.employmentStatus === 'ACTIVE' || (!supStaff.employmentStatus && supStaff.accountStatus === 'active') || supStaff.accountStatus === 'active') &&
+          supStaff.employmentStatus !== 'SUSPENDED' &&
+          supStaff.employmentStatus !== 'TERMINATED' &&
+          supStaff.accountStatus !== 'suspended' &&
+          !(supStaff as any).isDeleted;
 
-      if (complaint.lastAssignedAt) {
-        const diffMs = new Date().getTime() - new Date(complaint.lastAssignedAt).getTime();
-        const diffMins = diffMs / (1000 * 60);
-        if (diffMins < 10) {
-          throw new Error('Reassignment cooldown active');
+        if (isSupActive) {
+          validSupportingIds.push(new Types.ObjectId(supId as string));
         }
       }
     }
 
-    const staff = await User.findById(staffId);
-    if (!staff || staff.role !== 'staff') {
-      throw new Error('Invalid staff member');
-    }
+    // Deactivate any existing active assignment for this complaint
+    await ComplaintAssignment.updateMany(
+      { complaintId: complaint._id, isActive: true },
+      {
+        isActive: false,
+        deactivatedAt: new Date(),
+        deactivatedBy: new Types.ObjectId(params.assignedBy as string),
+        deactivationReason: params.reason || 'Reassigned to new staff member'
+      }
+    );
 
-    if (staff.departmentId?.toString() !== complaint.departmentId?.toString()) {
-      throw new Error('Staff does not belong to this department');
-    }
+    // Create new assignment record
+    const assignment = await ComplaintAssignment.create({
+      complaintId: complaint._id,
+      departmentId: complaint.departmentId,
+      primaryStaffId: primaryStaff._id,
+      supportingStaffIds: validSupportingIds,
+      assignedBy: new Types.ObjectId(params.assignedBy as string),
+      assignedAt: new Date(),
+      reason: params.reason,
+      isActive: true
+    });
 
-    const oldStatus = complaint.status;
-
-    complaint.assignedStaffId = staff._id as any;
-    complaint.status = 'assigned';
-    
+    const isReassignment = Boolean(complaint.primaryStaffId);
     if (isReassignment) {
-      complaint.reassignmentCount = (complaint.reassignmentCount || 0) + 1;
+      complaint.reassignmentCount += 1;
       complaint.lastAssignedAt = new Date();
     } else {
       complaint.assignedAt = new Date();
-      complaint.lastAssignedAt = new Date();
     }
 
+    complaint.primaryStaffId = primaryStaff._id;
+    complaint.assignedStaffId = primaryStaff._id; // Backward compatibility
+    complaint.supportingStaffIds = validSupportingIds;
+    complaint.status = 'assigned';
     await complaint.save();
 
-    await ActivityLog.create([{
-      complaintId: complaint._id,
-      action: isReassignment ? 'reassigned' : 'assigned',
-      performedBy: performedByUserId,
-      oldValue: oldStatus,
-      newValue: 'assigned',
-      metadata: isReassignment ? {
-        from: oldStaffId ? oldStaffId.toString() : undefined,
-        to: staff._id.toString()
-      } : {
-        assignedTo: staff._id
+    // Audit Log
+    await AuditService.log({
+      userId: params.assignedBy,
+      userRole: params.assignedByRole,
+      action: isReassignment ? 'REASSIGN_COMPLAINT' : 'ASSIGN_COMPLAINT',
+      entityType: 'Assignment',
+      entityId: assignment._id,
+      details: {
+        complaintId: complaint._id,
+        primaryStaffId: primaryStaff._id,
+        supportingStaffIds: validSupportingIds,
+        reason: params.reason
       }
-    }]);
+    });
 
-    await Notification.create([{
-      userId: staff._id,
-      type: 'assignment',
-      message: `You have been ${isReassignment ? 'reassigned' : 'assigned'} to complaint #${complaint._id.toString().slice(-6).toUpperCase()}: ${complaint.title}`
-    }]);
+    const staffDisplayName = primaryStaff.profile?.fullName || (primaryStaff as any).name || primaryStaff.email || 'Staff Member';
 
-    return complaint;
-  } catch (error) {
-    throw error;
+    // Activity Log for Complaint Timeline
+    await ActivityLog.create({
+      complaintId: complaint._id,
+      departmentId: complaint.departmentId,
+      action: 'assigned',
+      performedBy: params.assignedBy,
+      metadata: {
+        assignedTo: primaryStaff._id,
+        assignedToName: staffDisplayName,
+        message: `Assigned to ${staffDisplayName}`
+      }
+    });
+
+    // Notify Primary Staff
+    await NotificationService.send({
+      userId: primaryStaff._id,
+      type: isReassignment ? 'reassignment' : 'assignment',
+      title: 'New Complaint Assigned',
+      message: `You have been assigned as primary staff on complaint #${complaint.complaintId}: ${complaint.title}`,
+      complaintId: complaint._id,
+      idempotencyKey: `assign_primary_${complaint._id}_${primaryStaff._id}_${Date.now()}`
+    });
+
+    // Notify Supporting Staff
+    for (const supId of validSupportingIds) {
+      await NotificationService.send({
+        userId: supId,
+        type: 'assignment',
+        title: 'Assigned as Supporting Staff',
+        message: `You have been assigned as supporting staff on complaint #${complaint.complaintId}`,
+        complaintId: complaint._id,
+        idempotencyKey: `assign_sup_${complaint._id}_${supId}_${Date.now()}`
+      });
+    }
+
+    return assignment;
   }
-};
 
-// code formatting update
-
-// minor code structure update
-
-// minor code structure update
-
-// minor code structure update
+  /**
+   * Calculates employee workload (active assigned complaints).
+   */
+  static async getStaffWorkload(staffId: Types.ObjectId | string): Promise<number> {
+    return await Complaint.countDocuments({
+      $or: [
+        { primaryStaffId: staffId },
+        { assignedStaffId: staffId },
+        { supportingStaffIds: staffId }
+      ],
+      status: { $in: ['assigned', 'in_progress', 'under_verification'] }
+    });
+  }
+}
