@@ -8,8 +8,13 @@ interface EmailOptions {
 
 export const sendEmail = async (options: EmailOptions): Promise<void> => {
   try {
+    const smtpHost = process.env.SMTP_HOST?.trim();
+    const smtpUser = process.env.SMTP_USER?.trim();
+    const smtpPass = process.env.SMTP_PASS?.trim();
+    const smtpPort = process.env.SMTP_PORT?.trim();
+
     // If SMTP missing, strictly fallback to generic console mapping ensuring app doesn't crash during DEV
-    if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+    if (!smtpHost || !smtpUser) {
       console.log(`\n================================`);
       console.log(`[Mock Email] Sent to ${options.to}`);
       console.log(`Subject: ${options.subject}`);
@@ -19,19 +24,19 @@ export const sendEmail = async (options: EmailOptions): Promise<void> => {
     }
 
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
+      host: smtpHost,
+      port: Number(smtpPort) || 587,
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: smtpUser,
+        pass: smtpPass,
       },
     });
 
     const mailOptions = {
-        from: `Complaint Management Team <${process.env.SMTP_USER}>`,
-        to: options.to,
-        subject: options.subject,
-        text: options.message,
+      from: `Complaint Management Team <${smtpUser}>`,
+      to: options.to,
+      subject: options.subject,
+      text: options.message,
     };
 
     await transporter.sendMail(mailOptions);
