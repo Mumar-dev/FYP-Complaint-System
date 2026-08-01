@@ -23,5 +23,3 @@ export const sendResponse = (
     data,
   });
 };
-
-// minor code structure update
