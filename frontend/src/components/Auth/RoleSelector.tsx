@@ -12,7 +12,7 @@ const RoleSelector: React.FC<RoleSelectorProps> = ({
   selectedRole,
   onRoleSelect,
 }) => {
-  const roles: UserRole[] = ['resident', 'staff', 'department', 'admin', 'superadmin'];
+  const roles: UserRole[] = ['resident', 'staff', 'supervisor', 'department_head', 'admin', 'superadmin'];
 
   return (
     <div className="mt-8">
