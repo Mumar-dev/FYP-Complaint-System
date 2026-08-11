@@ -5,6 +5,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
   fullWidth?: boolean;
+  icon?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -14,6 +15,7 @@ const Button: React.FC<ButtonProps> = ({
   isLoading = false,
   fullWidth = false,
   children,
+  icon,
   disabled,
   className = '',
   ...props
