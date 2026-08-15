@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -8,20 +8,31 @@ import {
   Users,
   Settings,
   BarChart3,
-  MessageSquare,
   Building2,
   Shield,
   LogOut,
   ChevronRight,
   Home,
-  ClipboardList,
-  Zap,
-  Plus,
-  User,
+  Clock,
+  Calendar,
+  CalendarDays,
+  Award,
+  AlertTriangle,
+  ArrowRightLeft,
+  FileCheck,
   HelpCircle,
+  Sliders,
+  Bell,
+  UserPlus,
+  ShieldAlert,
+  FileWarning,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '@hooks/useAuth';
 import { ROUTES } from '@constants/index';
+import { useGetNotificationsQuery } from '@/features/notification/notification.api';
+import { AddStaffModal } from '@/components/Staff/AddStaffModal';
+import UserAvatar from './UserAvatar';
 
 interface MenuSection {
   title: string;
@@ -32,55 +43,36 @@ interface MenuItem {
   label: string;
   icon: React.ReactNode;
   path?: string;
-  action?: () => void;
+  badge?: string;
+  onClick?: () => void;
 }
 
 interface SidebarProps {
   isOpen?: boolean;
+  onClose?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen = true }) => {
-  const { user, logout } = useAuth();
+const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
+  const { user } = useAuth();
+  const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
   const location = useLocation();
+  const { data: notificationData } = useGetNotificationsQuery(undefined, {
+    skip: !user,
+    pollingInterval: 30000,
+  });
 
-  // Define menu items by role
+  const unreadCount = (notificationData?.data || []).filter((n: any) => !n.read).length;
+
   const getMenuByRole = (): MenuSection[] => {
     switch (user?.role) {
       case 'resident':
         return [
           {
-            title: 'Main',
+            title: 'Resident Portal',
             items: [
-              {
-                label: 'Dashboard',
-                icon: <Home className="w-5 h-5" />,
-                path: ROUTES.RESIDENT_DASHBOARD,
-              },
-              {
-                label: 'Submit Complaint',
-                icon: <FileText className="w-5 h-5" />,
-                path: ROUTES.RESIDENT_SUBMIT_COMPLAINT,
-              },
-              {
-                label: 'My Complaints',
-                icon: <History className="w-5 h-5" />,
-                path: ROUTES.RESIDENT_MY_COMPLAINTS,
-              },
-            ],
-          },
-          {
-            title: 'Account',
-            items: [
-              {
-                label: 'Profile',
-                icon: <User className="w-5 h-5" />,
-                path: ROUTES.PROFILE,
-              },
-              {
-                label: 'Help & Support',
-                icon: <HelpCircle className="w-5 h-5" />,
-                path: ROUTES.HELP_SUPPORT,
-              },
+              { label: 'Dashboard', icon: <Home className="w-5 h-5" />, path: ROUTES.RESIDENT_DASHBOARD },
+              { label: 'Submit a Complaint', icon: <FileText className="w-5 h-5" />, path: ROUTES.RESIDENT_SUBMIT_COMPLAINT },
+              { label: 'Complaint History', icon: <History className="w-5 h-5" />, path: ROUTES.RESIDENT_MY_COMPLAINTS },
             ],
           },
         ];
@@ -88,38 +80,33 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true }) => {
       case 'staff':
         return [
           {
-            title: 'Work',
+            title: 'Staff Workspace',
             items: [
+              { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: ROUTES.STAFF_DASHBOARD },
+              { label: 'Assigned Complaints', icon: <FileText className="w-5 h-5" />, path: ROUTES.STAFF_ASSIGNED_COMPLAINTS },
               {
-                label: 'Dashboard',
-                icon: <LayoutDashboard className="w-5 h-5" />,
-                path: ROUTES.STAFF_DASHBOARD,
+                label: 'Notifications',
+                icon: <Bell className="w-5 h-5" />,
+                path: ROUTES.STAFF_NOTIFICATIONS,
+                badge: unreadCount > 0 ? String(unreadCount) : undefined,
               },
-              {
-                label: 'Assigned Complaints',
-                icon: <ClipboardList className="w-5 h-5" />,
-                path: ROUTES.STAFF_ASSIGNED_COMPLAINTS,
-              },
-              {
-                label: 'Completed Work',
-                icon: <CheckCircle className="w-5 h-5" />,
-                path: ROUTES.STAFF_COMPLETED_WORK,
-              },
+              { label: 'Completed Work', icon: <CheckCircle className="w-5 h-5" />, path: ROUTES.STAFF_COMPLETED_WORK },
+              { label: 'My Attendance', icon: <Clock className="w-5 h-5" />, path: ROUTES.STAFF_HR_HUB },
+              { label: 'My Requests', icon: <FileText className="w-5 h-5" />, path: ROUTES.STAFF_REQUESTS },
+              { label: 'Warnings', icon: <ShieldAlert className="w-5 h-5" />, path: ROUTES.STAFF_WARNINGS },
             ],
           },
+        ];
+
+      case 'supervisor':
+        return [
           {
-            title: 'Support',
+            title: 'Supervisor Workspace',
             items: [
-              {
-                label: 'Profile',
-                icon: <User className="w-5 h-5" />,
-                path: ROUTES.PROFILE,
-              },
-              {
-                label: 'Help & Support',
-                icon: <HelpCircle className="w-5 h-5" />,
-                path: ROUTES.HELP_SUPPORT,
-              },
+              { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: ROUTES.SUPERVISOR_DASHBOARD },
+              { label: 'Department Complaints', icon: <FileText className="w-5 h-5" />, path: ROUTES.SUPERVISOR_COMPLAINTS },
+              { label: 'Review & Approvals', icon: <FileCheck className="w-5 h-5" />, path: ROUTES.SUPERVISOR_APPROVALS },
+              { label: 'Staff Performance', icon: <Award className="w-5 h-5" />, path: ROUTES.SUPERVISOR_PERFORMANCE },
             ],
           },
         ];
@@ -127,43 +114,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true }) => {
       case 'department_head':
         return [
           {
-            title: 'Management',
+            title: 'Department Operations',
             items: [
-              {
-                label: 'Dashboard',
-                icon: <LayoutDashboard className="w-5 h-5" />,
-                path: ROUTES.DEPARTMENT_DASHBOARD,
-              },
-              {
-                label: 'Staff',
-                icon: <Users className="w-5 h-5" />,
-                path: ROUTES.DEPARTMENT_STAFF,
-              },
-              {
-                label: 'Staff Performance',
-                icon: <BarChart3 className="w-5 h-5" />,
-                path: ROUTES.DEPARTMENT_STAFF_PERFORMANCE,
-              },
-              {
-                label: 'Complaints',
-                icon: <ClipboardList className="w-5 h-5" />,
-                path: ROUTES.DEPARTMENT_COMPLAINTS,
-              },
-            ],
-          },
-          {
-            title: 'Support',
-            items: [
-              {
-                label: 'Profile',
-                icon: <User className="w-5 h-5" />,
-                path: ROUTES.PROFILE,
-              },
-              {
-                label: 'Help & Support',
-                icon: <HelpCircle className="w-5 h-5" />,
-                path: ROUTES.HELP_SUPPORT,
-              },
+              { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: ROUTES.DEPARTMENT_DASHBOARD },
+              { label: 'Complaints', icon: <FileText className="w-5 h-5" />, path: ROUTES.DEPARTMENT_COMPLAINTS },
+              { label: 'Staff Members', icon: <Users className="w-5 h-5" />, path: ROUTES.DEPARTMENT_STAFF },
+              { label: 'Staff Attendance', icon: <Clock className="w-5 h-5" />, path: ROUTES.DEPARTMENT_ATTENDANCE },
+              { label: 'Staff Shifts', icon: <CalendarDays className="w-5 h-5" />, path: ROUTES.DEPARTMENT_SHIFTS },
+              { label: 'Staff Requests', icon: <FileCheck className="w-5 h-5" />, path: ROUTES.DEPARTMENT_REQUESTS },
+              { label: 'Staff Performance', icon: <BarChart3 className="w-5 h-5" />, path: ROUTES.DEPARTMENT_STAFF_PERFORMANCE },
+              { label: 'Service Record', icon: <ShieldAlert className="w-5 h-5" />, path: ROUTES.DEPARTMENT_SERVICE_RECORD },
             ],
           },
         ];
@@ -173,40 +133,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true }) => {
           {
             title: 'Administration',
             items: [
+              { label: 'Admin Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: ROUTES.ADMIN_DASHBOARD },
+              { label: 'Departments', icon: <Building2 className="w-5 h-5" />, path: ROUTES.ADMIN_DEPARTMENTS },
+              { label: 'Resident Approvals', icon: <Users className="w-5 h-5" />, path: ROUTES.ADMIN_APPROVE_RESIDENTS },
+              { label: 'Transfer Requests', icon: <ArrowRightLeft className="w-5 h-5" />, path: ROUTES.ADMIN_TRANSFER_REQUESTS },
+              { label: 'Workforce Management', icon: <Award className="w-5 h-5" />, path: ROUTES.ADMIN_HR_MANAGEMENT },
+              { label: 'SLA Policies', icon: <Sliders className="w-5 h-5" />, path: ROUTES.ADMIN_SLA_MANAGEMENT },
               {
-                label: 'Dashboard',
-                icon: <Shield className="w-5 h-5" />,
-                path: ROUTES.ADMIN_DASHBOARD,
-              },
-              {
-                label: 'Departments',
-                icon: <Building2 className="w-5 h-5" />,
-                path: ROUTES.ADMIN_DEPARTMENTS,
-              },
-              {
-                label: 'Add Staff',
-                icon: <Users className="w-5 h-5" />,
-                path: ROUTES.ADMIN_CREATE_STAFF,
-              },
-              {
-                label: 'Approve Residents',
-                icon: <CheckCircle className="w-5 h-5" />,
-                path: ROUTES.ADMIN_APPROVE_RESIDENTS,
-              },
-            ],
-          },
-          {
-            title: 'Support',
-            items: [
-              {
-                label: 'Profile',
-                icon: <User className="w-5 h-5" />,
-                path: ROUTES.PROFILE,
-              },
-              {
-                label: 'Help & Support',
-                icon: <HelpCircle className="w-5 h-5" />,
-                path: ROUTES.HELP_SUPPORT,
+                label: 'Add Staff Member',
+                icon: <UserPlus className="w-5 h-5" />,
+                onClick: () => setIsAddStaffOpen(true),
               },
             ],
           },
@@ -215,53 +151,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true }) => {
       case 'superadmin':
         return [
           {
-            title: 'System',
+            title: 'Executive Control',
             items: [
-              {
-                label: 'Dashboard',
-                icon: <Zap className="w-5 h-5" />,
-                path: ROUTES.SUPERADMIN_DASHBOARD,
-              },
-              {
-                label: 'Analytics',
-                icon: <BarChart3 className="w-5 h-5" />,
-                path: ROUTES.SUPERADMIN_ANALYTICS,
-              },
-              {
-                label: 'Reports',
-                icon: <FileText className="w-5 h-5" />,
-                path: ROUTES.SUPERADMIN_REPORTS,
-              },
-              {
-                label: 'Audit Logs',
-                icon: <History className="w-5 h-5" />,
-                path: ROUTES.SUPERADMIN_AUDIT_LOGS,
-              },
-            ],
-          },
-          {
-            title: 'Approvals',
-            items: [
-              {
-                label: 'Department Requests',
-                icon: <CheckCircle className="w-5 h-5" />,
-                path: ROUTES.SUPERADMIN_REQUESTS,
-              },
-            ],
-          },
-          {
-            title: 'Support',
-            items: [
-              {
-                label: 'Profile',
-                icon: <User className="w-5 h-5" />,
-                path: ROUTES.PROFILE,
-              },
-              {
-                label: 'Help & Support',
-                icon: <HelpCircle className="w-5 h-5" />,
-                path: ROUTES.HELP_SUPPORT,
-              },
+              { label: 'Dashboard', icon: <Shield className="w-5 h-5" />, path: ROUTES.SUPERADMIN_DASHBOARD },
+              { label: 'Department Approvals', icon: <Building2 className="w-5 h-5" />, path: ROUTES.SUPERADMIN_REQUESTS },
+              { label: 'Department Analytics', icon: <BarChart3 className="w-5 h-5" />, path: ROUTES.SUPERADMIN_ANALYTICS },
+              { label: 'System Audit Logs', icon: <History className="w-5 h-5" />, path: ROUTES.SUPERADMIN_AUDIT_LOGS },
+              { label: 'Admin Performance', icon: <Award className="w-5 h-5" />, path: ROUTES.SUPERADMIN_ADMIN_PERFORMANCE },
+              { label: 'Resident Feedback', icon: <MessageSquare className="w-5 h-5" />, path: ROUTES.SUPERADMIN_FEEDBACK },
             ],
           },
         ];
@@ -272,79 +169,136 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true }) => {
   };
 
   const menuSections = getMenuByRole();
-  const isLinkActive = (path?: string) => path && location.pathname === path;
 
   return (
     <aside
       className={`
-        fixed inset-y-0 left-0 top-[73px] w-64 bg-white border-r border-gray-200 
-        transition-transform duration-300 z-30
-        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:translate-x-0 lg:sticky
+        fixed lg:static top-16 lg:top-0 left-0 bottom-0 w-64 bg-white border-r border-gray-200 z-40
+        transition-transform duration-300 ease-in-out flex flex-col h-[calc(100vh-4rem)] lg:h-full flex-none
+        ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}
     >
-      <div className="h-full overflow-y-auto flex flex-col">
-        {/* Menu Sections */}
-        <nav className="flex-1 px-4 py-6 space-y-8">
-          {menuSections.map((section) => (
-            <div key={section.title}>
-              {/* Section Title */}
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-2 mb-3">
-                {section.title}
-              </p>
+      {/* Brand Header for Mobile Drawer (Hidden on Desktop since Navbar has Logo) */}
+      <div className="p-4 border-b border-gray-100 flex lg:hidden items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm">
+            <Building2 className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-sm font-bold text-gray-900 leading-tight">Society CMS</h1>
+            <p className="text-[10px] font-semibold text-blue-600 uppercase tracking-wider">
+              {user?.role ? user.role.replace('_', ' ') : 'Platform'}
+            </p>
+          </div>
+        </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+            aria-label="Close menu"
+          >
+            ✕
+          </button>
+        )}
+      </div>
 
-              {/* Menu Items */}
-              <div className="space-y-1">
-                {section.items.map((item) => (
+      {/* Nav List (Independent Vertical Scroll) */}
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6">
+        {menuSections.map((section, idx) => (
+          <div key={idx}>
+            <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              {section.title}
+            </p>
+            <nav className="space-y-1">
+              {section.items.map((item, itemIdx) => {
+                if (item.onClick) {
+                  return (
+                    <button
+                      key={itemIdx}
+                      type="button"
+                      onClick={() => {
+                        if (onClose) onClose();
+                        item.onClick!();
+                      }}
+                      className="flex items-center gap-3 w-full px-3.5 py-2.5 rounded-xl font-medium text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-all duration-150 cursor-pointer"
+                    >
+                      <span className="text-gray-400">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                }
+
+                const isActive = item.path ? location.pathname === item.path : false;
+                return (
                   <Link
-                    key={item.label}
+                    key={itemIdx}
                     to={item.path || '#'}
+                    onClick={() => {
+                      if (onClose) onClose();
+                    }}
                     className={`
-                      flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200
-                      ${
-                        isLinkActive(item.path)
-                          ? 'bg-blue-100 text-blue-700 font-medium'
-                          : 'text-gray-700 hover:bg-blue-50'
+                      flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all duration-150
+                      ${isActive
+                        ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100 font-semibold'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                       }
                     `}
                   >
-                    <span className={isLinkActive(item.path) ? 'text-blue-600' : 'text-gray-400'}>
-                      {item.icon}
-                    </span>
-                    <span className="flex-1 text-sm font-medium">{item.label}</span>
-                    {isLinkActive(item.path) && (
-                      <ChevronRight className="w-4 h-4 text-blue-600" />
-                    )}
+                    <div className="flex items-center gap-3">
+                      <span className={isActive ? 'text-blue-600' : 'text-gray-400'}>{item.icon}</span>
+                      <span>{item.label}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {item.badge && (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                          {item.badge}
+                        </span>
+                      )}
+                      {isActive && <ChevronRight className="w-4 h-4 text-blue-500" />}
+                    </div>
                   </Link>
-                ))}
-              </div>
-            </div>
-          ))}
-        </nav>
-
-        {/* Sidebar Footer */}
-        <div className="border-t border-gray-200 p-4 space-y-2">
-          {/* Settings */}
-          <Link to={ROUTES.SETTINGS} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 hover:bg-blue-50 transition-colors duration-200">
-            <Settings className="w-5 h-5 text-gray-400" />
-            <span>Settings</span>
-          </Link>
-
-          {/* Logout */}
-          <button
-            onClick={() => logout()}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors duration-200 font-medium"
-          >
-            <LogOut className="w-5 h-5" />
-            <span>Sign Out</span>
-          </button>
-        </div>
-
-        {/* Version Info */}
-        <div className="border-t border-gray-200 p-4 text-center">
-          <p className="text-xs text-gray-500">SocietyAI v1.0</p>
-        </div>
+                );
+              })}
+            </nav>
+          </div>
+        ))}
       </div>
+
+      {/* Compact User Profile Section at Bottom of Sidebar */}
+      <div className="p-3 border-t border-gray-200 bg-gray-50/70">
+        <Link
+          to={user?.role === 'resident' ? ROUTES.RESIDENT_PROFILE : ROUTES.PROFILE}
+          onClick={() => {
+            if (onClose) onClose();
+          }}
+          className="flex items-center gap-2.5 p-1 rounded-xl hover:bg-white hover:shadow-xs border border-transparent hover:border-gray-200/80 transition-all group"
+        >
+          {/* Circular Avatar */}
+          <UserAvatar
+            name={user?.profile?.fullName || user?.email}
+            src={user?.profile?.profileImage || user?.profile?.avatar}
+            size="sm"
+          />
+
+          {/* User Details: Name and Muted Email */}
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+              {user?.profile?.fullName || user?.email?.split('@')[0]}
+            </p>
+            {user?.email && (
+              <p className="text-[11px] text-gray-400 truncate mt-0.5 leading-none">
+                {user.email}
+              </p>
+            )}
+          </div>
+        </Link>
+      </div>
+
+      {/* Reusable Add Staff Modal for Admin */}
+      <AddStaffModal
+        isOpen={isAddStaffOpen}
+        onClose={() => setIsAddStaffOpen(false)}
+      />
     </aside>
   );
 };
