@@ -58,7 +58,13 @@ const ComplaintTimeline: React.FC<ComplaintTimelineProps> = ({ complaintId }) =>
         if (item.action === 'status_updated') {
           message = `Status changed from ${item.metadata?.from || 'Unknown'} to ${item.metadata?.to || 'Unknown'}`;
         } else if (item.action === 'assigned') {
-          message = `Assigned to ${item.metadata?.assignedTo || 'Unknown Staff'}`;
+          // If metadata.message has a readable string (e.g. "Assigned to John Doe"), prefer it
+          if (item.metadata?.message && !/^[0-9a-fA-F]{24}$/.test(item.metadata.message.trim())) {
+            message = item.metadata.message;
+          } else {
+            const assignedTarget = item.metadata?.assignedToName || item.metadata?.assignedTo || 'Staff Member';
+            message = `Assigned to ${assignedTarget}`;
+          }
         } else if (item.action === 'sla_breached') {
           message = item.metadata?.message || 'SLA breached';
         } else if (item.action === 'created') {
