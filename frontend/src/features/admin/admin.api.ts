@@ -27,11 +27,19 @@ export const adminApi = createApi({
     }),
 
     // ── Departments ────────────────────────────────────────────────────────────
-    getDepartments: builder.query<any, void>({
-      query: () => ({ url: '/departments', method: 'GET' }),
+    getDepartments: builder.query<any, { approvedOnly?: boolean; activeOnly?: boolean } | void>({
+      query: (params) => ({ url: '/departments', method: 'GET', params: params || {} }),
       providesTags: ['Department'],
     }),
-    createDepartment: builder.mutation<any, { name: string; slaTargetHours: number; description?: string }>({
+    createDepartment: builder.mutation<any, { 
+      name: string; 
+      slaTargetHours: number; 
+      code?: string;
+      description?: string; 
+      positions?: string[];
+      categories?: string[];
+      headId?: string;
+    }>({
       query: (data) => ({ url: '/departments', method: 'POST', data }),
       invalidatesTags: ['Department'],
     }),
@@ -39,9 +47,28 @@ export const adminApi = createApi({
       query: (id) => ({ url: `/departments/${id}`, method: 'GET' }),
       providesTags: (_result, _error, id) => [{ type: 'Department', id }],
     }),
-    updateDepartment: builder.mutation<any, { id: string; data: { name?: string; slaTargetHours?: number; description?: string } }>({
+    updateDepartment: builder.mutation<any, { 
+      id: string; 
+      data: { 
+        name?: string; 
+        code?: string;
+        slaTargetHours?: number; 
+        description?: string; 
+        positions?: string[];
+        categories?: string[];
+        headId?: string | null;
+        isActive?: boolean;
+        approvalStatus?: 'pending' | 'approved' | 'rejected';
+        resubmitForApproval?: boolean;
+        rejectionReason?: string;
+      } 
+    }>({
       query: ({ id, data }) => ({ url: `/departments/${id}`, method: 'PATCH', data }),
       invalidatesTags: (_result, _error, { id }) => [{ type: 'Department', id }, 'Department'],
+    }),
+    deleteDepartment: builder.mutation<any, string>({
+      query: (id) => ({ url: `/departments/${id}`, method: 'DELETE' }),
+      invalidatesTags: ['Department'],
     }),
     getDepartmentStaff: builder.query<any, string>({
       query: (id) => ({ url: `/departments/${id}/staff`, method: 'GET' }),
@@ -78,25 +105,42 @@ export const adminApi = createApi({
     }),
     promoteStaff: builder.mutation<any, { userId: string; deptId: string }>({
       query: ({ userId }) => ({ url: `/users/${userId}/promote`, method: 'PATCH' }),
-      invalidatesTags: (_result, _error, { deptId }) => [{ type: 'DepartmentStaff', id: deptId }],
+      invalidatesTags: (_result, _error, { deptId }) => [{ type: 'DepartmentStaff', id: deptId }, 'Staff', 'Department'],
+    }),
+    demoteStaff: builder.mutation<any, { userId: string; deptId: string }>({
+      query: ({ userId }) => ({ url: `/users/${userId}/demote`, method: 'PATCH' }),
+      invalidatesTags: (_result, _error, { deptId }) => [{ type: 'DepartmentStaff', id: deptId }, 'Staff', 'Department'],
     }),
     removeStaffFromDepartment: builder.mutation<any, { userId: string; deptId: string }>({
       query: ({ userId }) => ({ url: `/users/${userId}/remove-department`, method: 'PATCH' }),
       invalidatesTags: (_result, _error, { deptId }) => [
         { type: 'DepartmentStaff', id: deptId },
+        { type: 'Department', id: deptId },
         'Staff',
+        'Department',
       ],
     }),
-    assignStaffToDepartment: builder.mutation<any, { userId: string; departmentId: string; currentDeptId: string }>({
-      query: ({ userId, departmentId }) => ({
-        url: `/users/${userId}/assign-department`,
+    assignStaffToDepartment: builder.mutation<any, { userId?: string; userIds?: string[]; departmentId: string; currentDeptId: string; reason?: string }>({
+      query: ({ userId, userIds, departmentId, reason }) => ({
+        url: userId ? `/users/${userId}/assign-department` : '/users/assign-department',
         method: 'PATCH',
-        data: { departmentId },
+        data: { departmentId, userIds, reason },
       }),
       invalidatesTags: (_result, _error, { currentDeptId }) => [
         { type: 'DepartmentStaff', id: currentDeptId },
         'Staff',
         'Department',
+      ],
+    }),
+    updateStaffRoleOrPosition: builder.mutation<any, { userId: string; deptId: string; data: any }>({
+      query: ({ userId, data }) => ({
+        url: `/users/${userId}`,
+        method: 'PATCH',
+        data,
+      }),
+      invalidatesTags: (_result, _error, { deptId }) => [
+        { type: 'DepartmentStaff', id: deptId },
+        'Staff',
       ],
     }),
   }),
@@ -111,13 +155,16 @@ export const {
   useCreateDepartmentMutation,
   useGetDepartmentByIdQuery,
   useUpdateDepartmentMutation,
+  useDeleteDepartmentMutation,
   useGetDepartmentStaffQuery,
   useAssignHeadMutation,
   useCreateStaffMutation,
   useGetStaffMembersQuery,
   usePromoteStaffMutation,
+  useDemoteStaffMutation,
   useRemoveStaffFromDepartmentMutation,
   useAssignStaffToDepartmentMutation,
+  useUpdateStaffRoleOrPositionMutation,
   useGetHeadDashboardQuery,
   useGetStaffRecommendationsQuery,
 } = adminApi;
