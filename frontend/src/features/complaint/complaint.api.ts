@@ -46,28 +46,40 @@ export const complaintApi = api.injectEndpoints({
         method: 'POST',
         data: body,
       }),
-      invalidatesTags: ['Complaint'],
+      invalidatesTags: ['Complaint', 'Notification'],
     }),
-    previewComplaintClassification: builder.mutation<any, { title: string; description: string }>({
+    checkDuplicateComplaint: builder.mutation<{ success: boolean; data: { duplicates: any[] } }, {
+      title?: string;
+      description: string;
+      locationType?: string;
+      address?: string;
+      lat?: number;
+      lng?: number;
+    }>({
       query: (body) => ({
-        url: '/complaints/preview',
+        url: '/complaints/check-duplicate',
         method: 'POST',
         data: body,
       }),
     }),
     updateComplaintStatus: builder.mutation<ComplaintResponse, UpdateComplaintStatusDto>({
-      query: ({ id, status }) => ({
+      query: ({ id, status, resolutionRemarks, notes, reason }: any) => ({
         url: `/complaints/${id}/status`,
         method: 'PATCH',
-        data: { status },
+        data: { status, resolutionRemarks, notes, reason },
       }),
       invalidatesTags: ['Complaint'],
     }),
     assignComplaint: builder.mutation<ComplaintResponse, AssignComplaintDto>({
-      query: ({ id, assignedStaffId }) => ({
+      query: ({ id, assignedStaffId, primaryStaffId, supportingStaffIds, reason }) => ({
         url: `/complaints/${id}/assign`,
         method: 'PATCH',
-        data: { assignedStaffId },
+        data: {
+          assignedStaffId: primaryStaffId || assignedStaffId,
+          primaryStaffId: primaryStaffId || assignedStaffId,
+          supportingStaffIds,
+          reason,
+        },
       }),
       invalidatesTags: ['Complaint'],
     }),
@@ -85,19 +97,128 @@ export const complaintApi = api.injectEndpoints({
       }),
       invalidatesTags: ['Complaint'],
     }),
+
+    submitResolutionEvidence: builder.mutation<
+      any,
+      { complaintId: string; formData: FormData }
+    >({
+      query: ({ complaintId, formData }) => ({
+        url: `/evidence/${complaintId}`,
+        method: 'POST',
+        data: formData,
+      }),
+      invalidatesTags: ['Complaint'],
+    }),
+
+    // Complaint Transfer Workflow
+    requestComplaintTransfer: builder.mutation<
+      { success: boolean; message: string; data: any },
+      { complaintId: string; targetDepartmentId: string; reason: string }
+    >({
+      query: ({ complaintId, targetDepartmentId, reason }) => ({
+        url: `/complaints/${complaintId}/transfer-request`,
+        method: 'POST',
+        data: { targetDepartmentId, reason },
+      }),
+      invalidatesTags: ['Complaint'],
+    }),
+
+    getComplaintTransferStatus: builder.query<
+      { success: boolean; data: any },
+      string
+    >({
+      query: (complaintId) => ({
+        url: `/complaints/${complaintId}/transfer-status`,
+        method: 'GET',
+      }),
+      providesTags: ['Complaint'],
+    }),
+
+    getComplaintTransferRequests: builder.query<
+      { success: boolean; data: any[] },
+      { status?: string } | void
+    >({
+      query: (params) => ({
+        url: '/complaints/transfer-requests/all',
+        method: 'GET',
+        params: params || {},
+      }),
+      providesTags: ['Complaint'],
+    }),
+
+    approveComplaintTransfer: builder.mutation<
+      { success: boolean; message: string; data: any },
+      { id: string; reviewRemarks?: string }
+    >({
+      query: ({ id, reviewRemarks }) => ({
+        url: `/complaints/transfer-requests/${id}/approve`,
+        method: 'PATCH',
+        data: { reviewRemarks },
+      }),
+      invalidatesTags: ['Complaint'],
+    }),
+
+    rejectComplaintTransfer: builder.mutation<
+      { success: boolean; message: string; data: any },
+      { id: string; reviewRemarks?: string }
+    >({
+      query: ({ id, reviewRemarks }) => ({
+        url: `/complaints/transfer-requests/${id}/reject`,
+        method: 'PATCH',
+        data: { reviewRemarks },
+      }),
+      invalidatesTags: ['Complaint'],
+    }),
+
+    // Resolution Verification Endpoints
+    getPendingResolutionVerifications: builder.query<{ success: boolean; data: any[] }, void>({
+      query: () => ({
+        url: '/evidence/pending-verifications',
+        method: 'GET',
+      }),
+      providesTags: ['Complaint'],
+    }),
+
+    getComplaintEvidence: builder.query<{ success: boolean; data: any[] }, string>({
+      query: (complaintId) => ({
+        url: `/evidence/${complaintId}`,
+        method: 'GET',
+      }),
+      providesTags: ['Complaint'],
+    }),
+
+    reviewResolutionEvidence: builder.mutation<
+      { success: boolean; message: string; data: any },
+      { evidenceId: string; action: 'approved' | 'rejected'; rejectionReason?: string; remarks?: string }
+    >({
+      query: ({ evidenceId, action, rejectionReason, remarks }) => ({
+        url: `/evidence/${evidenceId}/review`,
+        method: 'PATCH',
+        data: { action, rejectionReason: rejectionReason || remarks, remarks },
+      }),
+      invalidatesTags: ['Complaint'],
+    }),
   }),
 });
 
 export const { 
   useGetComplaintsQuery, 
   useCreateComplaintMutation, 
-  usePreviewComplaintClassificationMutation,
+  useCheckDuplicateComplaintMutation,
   useUpdateComplaintStatusMutation,
   useGetComplaintDetailsQuery,
   useGetComplaintActivityQuery,
   useAssignComplaintMutation,
   useGetStaffQuery,
   useSubmitComplaintFeedbackMutation,
-  useGetStaffDashboardQuery
+  useGetStaffDashboardQuery,
+  useSubmitResolutionEvidenceMutation,
+  useRequestComplaintTransferMutation,
+  useGetComplaintTransferStatusQuery,
+  useGetComplaintTransferRequestsQuery,
+  useApproveComplaintTransferMutation,
+  useRejectComplaintTransferMutation,
+  useGetPendingResolutionVerificationsQuery,
+  useGetComplaintEvidenceQuery,
+  useReviewResolutionEvidenceMutation,
 } = complaintApi;
-# commit-marker: [2026-03-18 13:30:00] Create complaint API slice with RTK Query endpoints
