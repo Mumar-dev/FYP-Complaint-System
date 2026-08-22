@@ -8,6 +8,10 @@ export interface AuthUser {
   _id: string;
   email: string;
   role: string;
+  rank?: 'junior' | 'senior' | 'team_lead' | 'lead' | 'supervisor' | 'head';
+  previousRank?: string;
+  designation?: string;
+  employmentStatus?: string;
   accountStatus: 'active' | 'pending' | 'suspended';
   departmentId?: string;
   profile: any;
