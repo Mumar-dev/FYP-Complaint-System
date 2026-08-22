@@ -3,11 +3,11 @@ import { LoginRequest, AuthResponse, AuthUser } from './auth.types';
 
 export const authApi = api.injectEndpoints({
   endpoints: (builder) => ({
-    register: builder.mutation<{ success: boolean; message: string }, any>({
-      query: (userData) => ({
+    register: builder.mutation<{ success: boolean; message: string }, FormData>({
+      query: (formData) => ({
         url: '/auth/register',
         method: 'POST',
-        data: userData,
+        data: formData
       }),
     }),
     login: builder.mutation<AuthResponse, LoginRequest>({
@@ -49,6 +49,22 @@ export const authApi = api.injectEndpoints({
         method: 'PATCH',
         data: formData,
       }),
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          if (data?.data) {
+            dispatch(
+              authApi.util.updateQueryData('getMe', undefined, (draft) => {
+                if (draft) {
+                  draft.data = data.data;
+                }
+              })
+            );
+          }
+        } catch (error) {
+          console.error("Failed to update profile cache", error);
+        }
+      },
       invalidatesTags: ['Auth'],
     }),
   }),
