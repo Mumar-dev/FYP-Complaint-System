@@ -5,10 +5,22 @@ interface Staff {
   email: string;
   rank: string;
   accountStatus: string;
+  role?: string;
   profile: {
     fullName: string;
   };
   createdAt: string;
+  currentShift?: {
+    _id: string;
+    name: string;
+    startTime: string;
+    endTime: string;
+    breakDurationMinutes?: number;
+    isOvernight?: boolean;
+    scheduleType?: 'ALL_DAYS' | 'SPECIFIC_DATES';
+    effectiveFrom?: string;
+    effectiveTo?: string | null;
+  } | null;
   stats: {
     assignedCount: number;
     resolvedCount: number;
@@ -40,8 +52,11 @@ interface DepartmentHeadDashboard {
 
 export const departmentApi = api.injectEndpoints({
   endpoints: (builder) => ({
-    getDepartments: builder.query<any, void>({
-      query: () => ({ url: '/departments', method: 'GET' }),
+    getDepartments: builder.query<{ success: boolean; data: any[] }, void>({
+      query: () => ({
+        url: '/departments',
+        method: 'GET',
+      }),
       providesTags: ['Department'],
     }),
     getDepartmentStaff: builder.query<DepartmentStaffResponse, string>({
