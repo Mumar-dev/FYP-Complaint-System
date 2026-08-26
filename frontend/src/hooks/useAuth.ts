@@ -6,11 +6,6 @@ import { useGetMeQuery, useLogoutMutation } from '@/features/auth/auth.api';
  * Components natively subscribing to this hook immediately re-render globally upon
  * Auth / getMe Cache Invalidation without manual prop drilling.
  */
-/**
- * Primary authentication hook for the application.
- * Wraps RTK Query's getMe endpoint to provide reactive auth state.
- * Components using this hook auto-re-render on auth state changes.
- */
 export const useAuth = () => {
   // Query executes strictly securely across http-only routes
   const { data: response, isLoading, isFetching, isError, error } = useGetMeQuery();
