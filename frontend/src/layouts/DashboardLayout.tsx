@@ -12,32 +12,35 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
   return (
-    <div className="min-h-screen bg-primary-50">
-      {/* Navbar */}
-      <Navbar onMenuClick={toggleSidebar} sidebarOpen={sidebarOpen} />
+    <div className="h-screen w-screen overflow-hidden flex flex-col bg-gray-50">
+      {/* Fixed Top Navbar */}
+      <header className="flex-none h-16 z-30">
+        <Navbar onMenuClick={toggleSidebar} sidebarOpen={sidebarOpen} />
+      </header>
 
-      <div className="flex">
-        {/* Sidebar */}
-        <Sidebar isOpen={sidebarOpen} />
+      {/* Main Body below Navbar: Fixed height, independent column scrolling */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Fixed Desktop Sidebar & Drawer on Mobile */}
+        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-        {/* Main Content */}
-        <main className="flex-1 w-full lg:ml-0">
-          {/* Close sidebar on mobile when clicking content */}
-          <div
-            onClick={() => sidebarOpen && setSidebarOpen(false)}
-            className="min-h-screen p-6 lg:p-8"
-          >
+        {/* Right-Side Main Content (Independently Scrolls Vertically) */}
+        <main
+          className="flex-1 h-full overflow-y-auto bg-gray-50/60 p-4 sm:p-5 lg:p-6 focus:outline-none"
+          tabIndex={-1}
+        >
+          <div className="w-full">
             {children}
           </div>
         </main>
       </div>
 
-      {/* Mobile Sidebar Overlay */}
+      {/* Mobile Sidebar Backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/20 z-20 lg:hidden"
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden transition-opacity"
           onClick={() => setSidebarOpen(false)}
-        ></div>
+          aria-hidden="true"
+        />
       )}
     </div>
   );
