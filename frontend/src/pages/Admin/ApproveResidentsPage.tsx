@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { useGetPendingUsersQuery, useApproveUserMutation, useRejectUserMutation } from '@/features/admin/admin.api';
-import { Search, CheckCircle2, XCircle, Loader2, UserCheck, UserX, Clock, ShieldAlert, User, Phone, MapPin, FileText, Calendar } from 'lucide-react';
-import { Button, Card, InputField } from '@/components/Common';
+import {
+  Search, CheckCircle2, XCircle, Loader2, UserCheck, UserX, Clock,
+  ShieldAlert, User, Phone, MapPin, FileText, ExternalLink, X, Eye
+} from 'lucide-react';
+import UserAvatar from '@/components/Common/UserAvatar';
+import { showSuccess, showError } from '@/utils/toast';
 
 export const AdminApproveResidentsPage: React.FC = () => {
   const { data, isLoading } = useGetPendingUsersQuery(undefined, { pollingInterval: 30000 });
@@ -14,19 +18,28 @@ export const AdminApproveResidentsPage: React.FC = () => {
   const [selectedRejectId, setSelectedRejectId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  const pendingUsers = data?.data || [];
+  // Lightbox preview state for proof document
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+
+  const pendingUsers = data?.data?.pendingUsers || (Array.isArray(data?.data) ? data.data : []);
+  const approvedCount = data?.data?.approvedCount ?? '--';
+  const rejectedCount = data?.data?.rejectedCount ?? '--';
 
   const filteredUsers = pendingUsers.filter((user: any) =>
-    user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.profile?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.profile?.cnic?.includes(searchTerm)
+    user.role === 'resident' && (
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.profile?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.profile?.cnic?.includes(searchTerm)
+    )
   );
 
   const handleApprove = async (id: string) => {
     try {
       await approveUser(id).unwrap();
+      showSuccess('Resident approved');
     } catch (err) {
       console.error(err);
+      showError('Failed to approve resident');
     }
   };
 
@@ -40,10 +53,12 @@ export const AdminApproveResidentsPage: React.FC = () => {
     if (selectedRejectId) {
       try {
         await rejectUser({ id: selectedRejectId, reason: rejectReason }).unwrap();
+        showSuccess('Resident rejected');
         setIsRejectModalOpen(false);
         setSelectedRejectId(null);
       } catch (err) {
         console.error(err);
+        showError('Failed to reject resident');
       }
     }
   };
@@ -51,6 +66,14 @@ export const AdminApproveResidentsPage: React.FC = () => {
   const cancelReject = () => {
     setIsRejectModalOpen(false);
     setSelectedRejectId(null);
+  };
+
+  // Helper to build valid URL for proof document
+  const getProofUrl = (url?: string) => {
+    if (!url) return null;
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    const cleanPath = url.startsWith('/') ? url : `/${url}`;
+    return `http://localhost:5000${cleanPath}`;
   };
 
   if (isLoading) {
@@ -64,182 +87,299 @@ export const AdminApproveResidentsPage: React.FC = () => {
   return (
     <div className="space-y-6 max-w-6xl mx-auto p-4 md:p-6 relative">
       {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between border-b border-slate-200 pb-4 gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-200/80 gap-3">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Resident Approvals</h1>
-          <p className="text-slate-500 mt-1 text-sm font-medium">Review and verify resident accounts before granting access.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Resident Approvals</h1>
+          <p className="text-sm text-slate-500 mt-1">Review and verify resident accounts before granting access.</p>
         </div>
       </div>
 
-      {/* STATS PANELS */}
+      {/* 1. STATS PANELS (Clean White Cards) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-yellow-50 to-orange-50 border border-yellow-200 p-4 rounded-xl shadow-sm flex items-center justify-between hover:shadow-md transition-all duration-300">
+        {/* Pending Approvals */}
+        <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-yellow-700 uppercase tracking-wider">Pending Approvals</p>
-            <h2 className="text-3xl font-black text-yellow-900 mt-1">{pendingUsers.length}</h2>
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Pending Approvals</p>
+            <h2 className="text-2xl font-semibold text-slate-900 mt-1">{pendingUsers.length}</h2>
           </div>
-          <div className="bg-yellow-200/50 p-3 rounded-full shadow-inner">
-            <Clock className="w-6 h-6 text-yellow-600" />
+          <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-200/70 flex items-center justify-center">
+            <Clock className="w-5 h-5 text-amber-600" />
           </div>
         </div>
-        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 p-4 rounded-xl shadow-sm flex items-center justify-between opacity-70">
+
+        {/* Approved Accounts */}
+        <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Approved Accounts</p>
-            <h2 className="text-3xl font-black text-emerald-900 mt-1">--</h2>
-            <p className="text-[10px] text-emerald-600 font-bold tracking-wide">View Analytics Panel</p>
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Approved Accounts</p>
+            <h2 className="text-2xl font-semibold text-slate-900 mt-1">{approvedCount}</h2>
           </div>
-          <div className="bg-emerald-200/50 p-3 rounded-full">
-            <UserCheck className="w-6 h-6 text-emerald-600" />
+          <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-200/70 flex items-center justify-center">
+            <UserCheck className="w-5 h-5 text-emerald-600" />
           </div>
         </div>
-        <div className="bg-gradient-to-br from-rose-50 to-red-50 border border-rose-200 p-4 rounded-xl shadow-sm flex items-center justify-between opacity-70">
+
+        {/* Rejected Accounts */}
+        <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-rose-700 uppercase tracking-wider">Rejected Accounts</p>
-            <h2 className="text-3xl font-black text-rose-900 mt-1">--</h2>
-            <p className="text-[10px] text-rose-600 font-bold tracking-wide">View Analytics Panel</p>
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Rejected Accounts</p>
+            <h2 className="text-2xl font-semibold text-slate-900 mt-1">{rejectedCount}</h2>
           </div>
-          <div className="bg-rose-200/50 p-3 rounded-full">
-            <UserX className="w-6 h-6 text-rose-600" />
+          <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-200/70 flex items-center justify-center">
+            <UserX className="w-5 h-5 text-rose-600" />
           </div>
         </div>
       </div>
 
-      {/* SEARCH BAR */}
-      <Card variant="md" className="p-3 border-slate-200 shadow-sm">
-        <InputField
+      {/* 2. SEARCH BAR (Single Crisp Input, No Double Box) */}
+      <div className="relative">
+        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+        <input
+          type="text"
           placeholder="Search by Resident Name, Email, or CNIC..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          icon={<Search className="w-4 h-4 text-slate-400" />}
+          className="h-10 w-full rounded-xl bg-white border border-slate-200/80 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 focus:outline-none transition-all"
         />
-      </Card>
+      </div>
 
-      {/* QUEUE */}
+      {/* 3. QUEUE */}
       <div className="space-y-4">
         {filteredUsers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-10 bg-slate-50 rounded-xl border border-dashed border-slate-300">
-            <ShieldAlert className="w-10 h-10 text-slate-300 mb-3" />
-            <h3 className="text-lg font-bold text-slate-500 drop-shadow-sm">No Pending Approvals</h3>
-            <p className="text-slate-400 mt-1 text-sm font-medium tracking-wide">The verification queue is currently empty.</p>
+          <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-dashed border-slate-200 text-center">
+            <ShieldAlert className="w-10 h-10 text-slate-300 mb-2.5" />
+            <h3 className="text-base font-semibold text-slate-800">No Pending Approvals</h3>
+            <p className="text-slate-400 mt-1 text-xs">The verification queue is currently empty.</p>
           </div>
         ) : (
-          filteredUsers.map((user: any) => (
-            <Card key={user._id} className="relative p-6 overflow-hidden border-slate-200 hover:border-blue-300 transition-colors shadow-sm">
-              <div className="absolute top-0 left-0 w-1.5 h-full bg-yellow-400" />
+          filteredUsers.map((user: any) => {
+            const proofUrl = getProofUrl(user.profile?.proofDocumentUrl);
+            const residentName = user.profile?.fullName || 'Resident';
+            const initial = residentName.charAt(0).toUpperCase();
 
-              <div className="flex flex-col gap-6 pl-2">
-                {/* Top Row: User Profile & Action Actions */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex items-start gap-4">
-                    <div className="bg-blue-50 p-3 rounded-full border border-blue-100 shadow-sm mt-1">
-                      <User className="w-6 h-6 text-blue-600" />
-                    </div>
-                    <div className="flex flex-col">
-                      <h3 className="text-xl font-bold text-slate-900 tracking-tight">{user.profile?.fullName || 'Resident'}</h3>
-                      <p className="text-blue-600 font-medium text-sm tracking-wide mb-2.5">{user.email}</p>
-                      <span className="text-xs font-semibold text-slate-500 border border-slate-200 px-3 py-1.5 rounded-lg bg-slate-50 shadow-sm w-fit flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5" />
-                        {new Date(user.createdAt).toLocaleDateString()}
-                      </span>
+            return (
+              <div
+                key={user._id}
+                className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs transition-colors hover:border-slate-300 flex flex-col gap-5"
+              >
+                {/* Top Row: User Profile on Left, Actions on Right */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <UserAvatar
+                      name={residentName}
+                      src={user.profile?.profileImage || user.profile?.avatar}
+                      size="md"
+                      className="w-11 h-11 text-sm"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-base font-semibold text-slate-900 truncate leading-tight">
+                          {residentName}
+                        </h3>
+                        <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          {new Date(user.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 truncate mt-0.5">{user.email}</p>
                     </div>
                   </div>
 
-                  <div className="flex flex-row items-center gap-3 min-w-[260px]">
-                    <Button
-                      onClick={() => handleApprove(user._id)}
-                      disabled={isApproving}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-base py-3 px-5 shadow-sm transition-all"
-                    >
-                      <CheckCircle2 className="w-5 h-5 mr-1.5 inline-block" /> Approve
-                    </Button>
-                    <Button
-                      variant="outline"
+                  {/* Actions Row */}
+                  <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
+                    <button
+                      type="button"
                       onClick={() => openRejectModal(user._id)}
                       disabled={isRejecting}
-                      className="flex-1 hover:bg-rose-50 text-rose-600 border border-rose-200 font-bold text-base py-3 px-5 transition-all"
+                      className="h-9 px-4 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium shadow-xs transition-colors disabled:opacity-50 focus:outline-none"
                     >
-                      <XCircle className="w-5 h-5 mr-1.5 inline-block" /> Reject
-                    </Button>
+                      <span>Reject</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApprove(user._id)}
+                      disabled={isApproving}
+                      className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium shadow-xs transition-colors disabled:opacity-50 focus:outline-none"
+                    >
+                      <span>Approve</span>
+                    </button>
                   </div>
                 </div>
 
-                {/* Bottom Row: Data Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5 border-t border-slate-100 pt-5">
-                  <div className="bg-slate-50 px-5 py-4 rounded-xl border border-slate-100 flex flex-col shadow-inner">
-                    <div className="flex items-center gap-2 mb-2 text-slate-500">
-                      <FileText className="w-4 h-4" />
-                      <p className="text-xs font-bold uppercase tracking-wider">CNIC</p>
+                {/* Details Strip (3 Columns) */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t border-slate-100 text-xs">
+                  <div className="bg-slate-50/70 rounded-lg px-3.5 py-2.5 flex items-center gap-2.5">
+                    <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">CNIC</p>
+                      <p className="text-sm font-semibold text-slate-900 truncate mt-0.5">
+                        {user.profile?.cnic || 'N/A'}
+                      </p>
                     </div>
-                    <p className="text-slate-900 font-black text-base pl-6">{user.profile?.cnic || 'N/A'}</p>
                   </div>
 
-                  <div className="bg-slate-50 px-5 py-4 rounded-xl border border-slate-100 flex flex-col shadow-inner">
-                    <div className="flex items-center gap-2 mb-2 text-slate-500">
-                      <Phone className="w-4 h-4" />
-                      <p className="text-xs font-bold uppercase tracking-wider">Phone</p>
+                  <div className="bg-slate-50/70 rounded-lg px-3.5 py-2.5 flex items-center gap-2.5">
+                    <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Phone</p>
+                      <p className="text-sm font-semibold text-slate-900 truncate mt-0.5">
+                        {user.profile?.phone || 'N/A'}
+                      </p>
                     </div>
-                    <p className="text-slate-900 font-black text-base pl-6">{user.profile?.phone || 'N/A'}</p>
                   </div>
 
-                  <div className="bg-slate-50 px-5 py-4 rounded-xl border border-slate-100 flex flex-col shadow-inner">
-                    <div className="flex items-center gap-2 mb-2 text-slate-500">
-                      <MapPin className="w-4 h-4" />
-                      <p className="text-xs font-bold uppercase tracking-wider">Resident Unit</p>
+                  <div className="bg-slate-50/70 rounded-lg px-3.5 py-2.5 flex items-center gap-2.5">
+                    <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Resident Unit</p>
+                      <p className="text-sm font-semibold text-slate-900 truncate mt-0.5">
+                        {user.profile?.address
+                          ? `Unit ${user.profile.address.houseNumber || 'N/A'}, Block ${user.profile.address.block || 'A'}`
+                          : `Unit ${user.profile?.houseNumber || '0'}, Block ${user.profile?.block || 'A'}`}
+                      </p>
                     </div>
-                    <p className="text-slate-900 font-black text-base pl-6 truncate">{`Unit ${user.profile?.houseNumber || '0'}, Block ${user.profile?.block || 'A'}`}</p>
+                  </div>
+                </div>
+
+                {/* Verification Proof Image Section */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-slate-500">Residence Proof Document:</span>
+                    {proofUrl && proofUrl !== 'dummy_url_for_now' ? (
+                      <div
+                        onClick={() => setPreviewImageUrl(proofUrl)}
+                        className="group flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50/60 hover:border-blue-200 transition-colors cursor-pointer"
+                      >
+                        <img
+                          src={proofUrl}
+                          alt="Proof document preview"
+                          className="w-7 h-7 object-cover rounded border border-slate-200"
+                          onError={(e) => {
+                            // If load fails, hide image and show fallback icon
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                        <span className="text-xs font-medium text-slate-700 group-hover:text-blue-700 flex items-center gap-1">
+                          <span>View Proof Document</span>
+                          <Eye className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600" />
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">No proof document uploaded</span>
+                    )}
                   </div>
                 </div>
               </div>
-            </Card>
-          ))
+            );
+          })
         )}
       </div>
 
-      {/* INTERNAL CUSTOM MODAL OVERLAY */}
-      {isRejectModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 transition-all">
-          <Card className="w-full max-w-md p-6 border-none shadow-2xl relative">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-3 text-red-600">
-                <div className="bg-red-100 p-2 rounded-full">
-                  <XCircle className="w-6 h-6" />
-                </div>
-                <h2 className="text-xl font-bold">Reject Application</h2>
+      {/* LIGHTBOX MODAL FOR PROOF DOCUMENT PREVIEW */}
+      {previewImageUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          onClick={() => setPreviewImageUrl(null)}
+        >
+          <div
+            className="max-w-2xl w-full bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-900">Residence Proof Document</h3>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewImageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                  title="Open full size in new tab"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewImageUrl(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button onClick={cancelReject} className="text-slate-400 hover:text-slate-600">
-                <XCircle className="w-6 h-6" />
-              </button>
             </div>
-
-            <p className="text-slate-600 text-sm mb-5 mt-2">
-              Are you certain you want to reject this resident's registration application? You can optionally provide a reason for the rejection below.
-            </p>
-
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-slate-900 mb-2">Rejection Reason <span className="text-slate-400 font-normal italic">(Optional)</span></label>
-              <textarea
-                rows={3}
-                placeholder="Ex: Invalid CNIC, conflicting unit details..."
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg text-sm transition-all focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none font-medium text-slate-800 shadow-sm"
+            <div className="p-4 bg-slate-100/60 overflow-auto flex items-center justify-center flex-1">
+              <img
+                src={previewImageUrl}
+                alt="Enlarged residence proof"
+                className="max-w-full max-h-[70vh] object-contain rounded-lg border border-slate-200 shadow-sm"
               />
             </div>
+            <div className="px-5 py-3 bg-slate-50/80 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPreviewImageUrl(null)}
+                className="h-9 px-4 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors focus:outline-none"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
-              <Button variant="outline" onClick={cancelReject} disabled={isRejecting} className="border-slate-300 text-slate-700 font-bold hover:bg-slate-100">
+      {/* REJECT MODAL (Clean & Modern Shell) */}
+      {isRejectModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="max-w-md w-full bg-white rounded-2xl shadow-xl border border-slate-200/80 overflow-hidden flex flex-col animate-in zoom-in-95 duration-150">
+            <div className="p-6">
+              <div className="flex items-start justify-between gap-4">
+                <h3 className="text-base font-semibold text-slate-900">Reject Application</h3>
+                <button
+                  type="button"
+                  onClick={cancelReject}
+                  disabled={isRejecting}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="mt-2 text-sm text-slate-500 leading-relaxed">
+                Are you sure you want to reject this resident's registration? You can optionally provide a reason for the applicant.
+              </p>
+
+              <div className="mt-4">
+                <label className="text-xs font-medium text-slate-700 mb-1.5 block">
+                  Rejection Reason <span className="text-slate-400 font-normal">(Optional)</span>
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="e.g. Invalid CNIC, unit mismatch..."
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 focus:outline-none transition-all resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-3.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={cancelReject}
+                disabled={isRejecting}
+                className="h-9 px-4 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors focus:outline-none"
+              >
                 Cancel
-              </Button>
-              <Button
-                variant="primary"
+              </button>
+              <button
+                type="button"
                 onClick={handleConfirmReject}
                 disabled={isRejecting}
-                className="font-bold bg-red-600 hover:bg-red-700 text-white shadow-md hover:shadow-lg transition-all"
+                className="h-9 px-4 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium shadow-xs transition-colors disabled:opacity-50 flex items-center gap-2 focus:outline-none"
               >
-                {isRejecting ? 'Rejecting...' : 'Yes, Reject Resident'}
-              </Button>
+                {isRejecting && <Loader2 className="w-4 h-4 animate-spin" />}
+                <span>Reject Resident</span>
+              </button>
             </div>
-          </Card>
+          </div>
         </div>
       )}
     </div>
