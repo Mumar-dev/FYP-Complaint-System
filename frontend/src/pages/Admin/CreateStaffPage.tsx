@@ -6,8 +6,8 @@ import { Loader2, Eye, EyeOff } from 'lucide-react';
 
 const CreateStaffPage: React.FC = () => {
   const [createStaff, { isLoading: isCreating }] = useCreateStaffMutation();
-  const { data: departmentsData, isLoading: isLoadingDeps } = useGetDepartmentsQuery();
-  
+  const { data: departmentsData, isLoading: isLoadingDeps } = useGetDepartmentsQuery({ approvedOnly: true, activeOnly: true });
+
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     fullName: '',
@@ -15,28 +15,50 @@ const CreateStaffPage: React.FC = () => {
     phone: '',
     cnic: '',
     password: '',
-    departmentId: ''
+    departmentId: '',
+    post: '',
+    rank: 'junior'
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    if (name === 'departmentId') {
+      setFormData(prev => ({ ...prev, departmentId: value, post: '' }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createStaff({
+      const res = await createStaff({
         ...formData,
         departmentId: formData.departmentId || null
       }).unwrap();
-      showSuccess('Staff created successfully');
-      setFormData({ fullName: '', email: '', phone: '', cnic: '', password: '', departmentId: '' });
+
+      if (res?.data?.emailSent) {
+        showSuccess('Staff created & credentials emailed.');
+      } else {
+        showSuccess('Staff created, but email failed.');
+      }
+      setFormData({ fullName: '', email: '', phone: '', cnic: '', password: '', departmentId: '', post: '', rank: 'junior' });
     } catch (err: any) {
       showError(err.data?.message || 'Failed to create staff account');
     }
   };
 
-  const departments = departmentsData?.data || [];
+  const departments = (departmentsData?.data || []).filter(
+    (d: any) => (d.approvalStatus === 'approved' || !d.approvalStatus) && d.isActive === true
+  );
+
+  // Get positions for selected department dynamically
+  const selectedDeptObj = departments.find((d: any) => d._id === formData.departmentId);
+  const departmentPositions: string[] = Array.isArray(selectedDeptObj?.jobPositions)
+    ? selectedDeptObj.jobPositions
+    : Array.isArray(selectedDeptObj?.positions)
+      ? selectedDeptObj.positions
+      : [];
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
@@ -121,7 +143,7 @@ const CreateStaffPage: React.FC = () => {
                 value={formData.departmentId}
                 onChange={handleChange}
                 disabled={isCreating || isLoadingDeps}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 transition-all outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:bg-white appearance-none"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 transition-all outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:bg-white cursor-pointer"
               >
                 <option value="">Select a department...</option>
                 {departments.map((dep: any) => (
@@ -130,8 +152,58 @@ const CreateStaffPage: React.FC = () => {
               </select>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* System-Wide Rank */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-700 tracking-wide uppercase">SYSTEM RANK</label>
+                <select
+                  name="rank"
+                  value={formData.rank}
+                  onChange={handleChange}
+                  disabled={isCreating || !formData.departmentId}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 transition-all outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:bg-white cursor-pointer disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                >
+                  {!formData.departmentId ? (
+                    <option value="">Select a department first...</option>
+                  ) : (
+                    <>
+                      <option value="junior">Junior</option>
+                      <option value="senior">Senior</option>
+                      <option value="team_lead">Team Lead</option>
+                      <option value="supervisor">Supervisor</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              {/* Position / Designation */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-700 tracking-wide uppercase">POSITION / DESIGNATION</label>
+                <select
+                  name="post"
+                  value={formData.post}
+                  onChange={handleChange}
+                  disabled={isCreating || !formData.departmentId || departmentPositions.length === 0}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 transition-all outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:bg-white cursor-pointer disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                >
+                  {!formData.departmentId ? (
+                    <option value="">Select a department first...</option>
+                  ) : departmentPositions.length === 0 ? (
+                    <option value="">No job positions configured for this department</option>
+                  ) : (
+                    <>
+                      <option value="">Select Department Position...</option>
+                      {departmentPositions.map((p: string) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </div>
+            </div>
+
             <div className="flex justify-end items-center gap-4 mt-4 pt-6 border-t border-slate-100">
-              <span className="text-sm font-medium text-slate-500 mr-auto cursor-pointer hover:text-slate-700" onClick={() => setFormData({ fullName: '', email: '', phone: '', cnic: '', password: '', departmentId: '' })}>
+              <span className="text-sm font-medium text-slate-500 mr-auto cursor-pointer hover:text-slate-700" onClick={() => setFormData({ fullName: '', email: '', phone: '', cnic: '', password: '', departmentId: '', post: '', rank: 'junior' })}>
                 Cancel
               </span>
               <Button type="submit" className="bg-blue-600 hover:bg-blue-700 px-8 shadow-sm" disabled={isCreating}>
