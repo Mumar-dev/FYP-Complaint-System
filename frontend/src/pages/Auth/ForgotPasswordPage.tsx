@@ -9,6 +9,7 @@ import { PageMeta } from '@components/Common/PageMeta';
 import securityIcon from '../../assets/icons/security.svg';
 import verifiedIcon from '../../assets/icons/verified.svg';
 import { showSuccess, showError } from '@/utils/toast';
+import axios from 'axios';
 
 const ForgotPasswordPage: React.FC = () => {
   const navigate = useNavigate();
@@ -26,18 +27,15 @@ const ForgotPasswordPage: React.FC = () => {
     }
 
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
-
-      if (email === "notfound@example.com") {
-        showError("Email does not exist");
-        return;
-      }
+    try {
+      await axios.post('http://localhost:5000/api/auth/forgot-password', { email });
       showSuccess("Reset instructions sent");
-      // Pass the email state to the next screen if desired, e.g. using navigate state
       navigate(ROUTES.VERIFY_OTP, { state: { email } });
-    }, 1000);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to send reset code');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
