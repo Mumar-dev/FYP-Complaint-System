@@ -12,6 +12,7 @@ const RegisterPage: React.FC = () => {
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
+    password: '',
     block: '',
     houseNumber: '',
     street: '',
@@ -22,19 +23,24 @@ const RegisterPage: React.FC = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.fullName.trim()) {
       newErrors.fullName = 'Full name is required';
-    } else if (formData.fullName.length > 40) {
-      newErrors.fullName = 'Full name cannot exceed 40 characters';
     }
 
     if (!formData.email.trim()) {
       newErrors.email = 'Email is required';
     } else if (!formData.email.includes('@')) {
       newErrors.email = 'Please enter a valid email';
+    }
+
+    if (!formData.password.trim()) {
+      newErrors.password = 'Password is required';
+    } else if (formData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
     }
 
     if (!formData.block.trim()) {
@@ -89,23 +95,24 @@ const RegisterPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const payload = {
-        email: formData.email,
-        password: 'dummy_password_to_be_replaced',
-        role: 'resident',
-        profile: {
-          fullName: formData.fullName,
-          phone: formData.phoneNumber,
-          cnic: formData.cnic,
-          address: {
-            block: formData.block,
-            houseNumber: formData.houseNumber,
-            street: formData.street
-          }
+      const formPayload = new FormData();
+        formPayload.append('email', formData.email);
+        formPayload.append('password', formData.password);
+        formPayload.append('role', 'resident');
+        // Profile fields
+        formPayload.append('profile[fullName]', formData.fullName);
+        formPayload.append('profile[phone]', formData.phoneNumber);
+        formPayload.append('profile[cnic]', formData.cnic);
+        // Address fields
+        formPayload.append('profile[address][block]', formData.block);
+        formPayload.append('profile[address][houseNumber]', formData.houseNumber);
+        formPayload.append('profile[address][street]', formData.street);
+        // Proof document
+        if (formData.document) {
+          formPayload.append('document', formData.document);
         }
-      };
 
-      await registerMutation(payload).unwrap();
+        await registerMutation(formPayload).unwrap();
       showSuccess('Account created successfully. Wait for approval');
       setSuccess(true);
     } catch (error: any) {
@@ -117,204 +124,279 @@ const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-white via-blue-50 to-white">
-      <PageMeta title="Create Account | Complaint Management System" description="Register a new account" />
+    <div className="min-h-screen flex flex-col justify-between bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100">
+      <PageMeta title="Create Your Account | Resident Portal" description="Register a new resident account" />
       
       {/* Top Navbar */}
-      <header className="w-full bg-white shadow-sm px-6 py-4 flex items-center justify-between z-10">
+      <header className="w-full bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-6 py-3.5 flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-sm">
-            <Building className="w-6 h-6" />
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-sm shadow-blue-500/20">
+            <Building className="w-5 h-5" />
           </div>
-          <span className="text-xl font-bold text-gray-900 tracking-tight">Resident Portal</span>
+          <span className="text-lg font-bold text-slate-900 tracking-tight">Resident Portal</span>
         </div>
-        <div className="flex items-center gap-6">
-          <button type="button" className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">
-            Help Center
-          </button>
-          <button type="button" className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">
-            Contact Support
-          </button>
+        
+        {/* Redesigned Top-Right Login Area */}
+        <div className="flex items-center gap-3">
+          <span className="text-xs sm:text-sm text-slate-500 hidden sm:inline">
+            Already have an account?
+          </span>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            onClick={() => navigate(ROUTES.LOGIN)}
+            className="!py-1.5 !px-4 text-xs sm:text-sm font-semibold rounded-lg shadow-sm shadow-blue-500/20"
+          >
+            Log In
+          </Button>
         </div>
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col items-center justify-center p-4">
+      <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
 
       {/* Register Card */}
-      <div className="w-full max-w-md">
-        <Card className="p-8">
+      <div className="w-full max-w-3xl">
+        <Card className="p-7 sm:p-10 shadow-xl shadow-slate-200/50 border border-slate-200/80 bg-white rounded-2xl">
           {/* Registration Form Wrapper */}
           {!success ? (
             <div>
               {/* Header */}
-              <div className="mb-8">
-                <div className="inline-flex items-center px-3 py-1 bg-blue-50 text-blue-600 text-xs font-bold tracking-wider rounded-full mb-4">
-                  REGISTRATION FORM
+              <div className="mb-8 border-b border-slate-100 pb-5">
+                <div className="inline-flex items-center px-2.5 py-0.5 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full mb-2">
+                  New Resident
                 </div>
-                <h1 className="text-3xl font-extrabold text-[#0f172a] mb-2 tracking-tight">
-                  Resident Registration
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                  Create Your Account
                 </h1>
-                <p className="text-gray-500 text-sm leading-relaxed">
-                  Please provide your details and property information to register for the digital portal.
+                <p className="text-slate-500 text-sm mt-1.5 leading-relaxed">
+                  Enter your personal and home details to get started.
                 </p>
               </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Full Name Field */}
+              
+              {/* SECTION 1: Personal Details */}
               <div>
-                <label htmlFor="fullName" className="label-field">
-                  Full Name
-                </label>
-                <InputField
-                  id="fullName"
-                  type="text"
-                  placeholder="e.g., John Doe"
-                  maxLength={40}
-                  value={formData.fullName}
-                  onChange={(e) => {
-                    setFormData({ ...formData, fullName: e.target.value });
-                    if (errors.fullName) {
-                      setErrors({ ...errors, fullName: '' });
-                    }
-                  }}
-                  error={errors.fullName}
-                  required
-                />
+                <div className="flex items-center gap-2 mb-3">
+                  <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Personal Details
+                  </h2>
+                  <div className="flex-1 h-px bg-slate-100"></div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
+                  {/* Full Name Field */}
+                  <div>
+                    <label htmlFor="fullName" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Full Name <span className="text-red-500">*</span>
+                    </label>
+                    <InputField
+                      id="fullName"
+                      type="text"
+                      placeholder="e.g., Ali Ahmed"
+                      value={formData.fullName}
+                      onChange={(e) => {
+                        setFormData({ ...formData, fullName: e.target.value });
+                        if (errors.fullName) {
+                          setErrors({ ...errors, fullName: '' });
+                        }
+                      }}
+                      error={errors.fullName}
+                      className="h-11 text-sm border-slate-300 focus:border-blue-500 focus:ring-blue-100"
+                      required
+                    />
+                  </div>
+
+                  {/* CNIC Field */}
+                  <div>
+                    <label htmlFor="cnic" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      CNIC Number <span className="text-red-500">*</span>
+                    </label>
+                    <InputField
+                      id="cnic"
+                      type="text"
+                      placeholder="13 digits without dashes (e.g., 3520212345671)"
+                      value={formData.cnic}
+                      onChange={(e) => {
+                        setFormData({ ...formData, cnic: e.target.value });
+                        if (errors.cnic) {
+                          setErrors({ ...errors, cnic: '' });
+                        }
+                      }}
+                      error={errors.cnic}
+                      className="h-11 text-sm border-slate-300 focus:border-blue-500 focus:ring-blue-100"
+                      required
+                    />
+                  </div>
+
+                  {/* Email Field */}
+                  <div>
+                    <label htmlFor="email" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Email <span className="text-red-500">*</span>
+                    </label>
+                    <InputField
+                      id="email"
+                      type="email"
+                      placeholder="name@example.com"
+                      value={formData.email}
+                      onChange={(e) => {
+                        setFormData({ ...formData, email: e.target.value });
+                        if (errors.email) {
+                          setErrors({ ...errors, email: '' });
+                        }
+                      }}
+                      error={errors.email}
+                      className="h-11 text-sm border-slate-300 focus:border-blue-500 focus:ring-blue-100"
+                      required
+                    />
+                  </div>
+
+                  {/* Phone Number Field */}
+                  <div>
+                    <label htmlFor="phoneNumber" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Mobile Number <span className="text-red-500">*</span>
+                    </label>
+                    <InputField
+                      id="phoneNumber"
+                      type="tel"
+                      placeholder="e.g., 0300-1234567"
+                      value={formData.phoneNumber}
+                      onChange={(e) => {
+                        setFormData({ ...formData, phoneNumber: e.target.value });
+                        if (errors.phoneNumber) {
+                          setErrors({ ...errors, phoneNumber: '' });
+                        }
+                      }}
+                      error={errors.phoneNumber}
+                      className="h-11 text-sm border-slate-300 focus:border-blue-500 focus:ring-blue-100"
+                      required
+                    />
+                  </div>
+
+                  {/* Password Field */}
+                  <div className="md:col-span-2">
+                    <label htmlFor="password" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Create Password <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Minimum 6 characters"
+                        value={formData.password}
+                        onChange={(e) => {
+                          setFormData({ ...formData, password: e.target.value });
+                          if (errors.password) {
+                            setErrors({ ...errors, password: '' });
+                          }
+                        }}
+                        className={`input-field pr-11 w-full text-sm h-11 border-slate-300 focus:border-blue-500 focus:ring-blue-100 ${errors.password ? 'border-red-500 focus:border-red-500 focus:ring-red-100' : ''}`}
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors flex items-center justify-center p-1"
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                    {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+                  </div>
+                </div>
               </div>
 
-              {/* CNIC Field */}
-              <div>
-                <label htmlFor="cnic" className="label-field">
-                  CNIC Number
-                </label>
-                <InputField
-                  id="cnic"
-                  type="text"
-                  placeholder="Enter your CNIC number without dashes"
-                  value={formData.cnic}
-                  onChange={(e) => {
-                    setFormData({ ...formData, cnic: e.target.value });
-                    if (errors.cnic) {
-                      setErrors({ ...errors, cnic: '' });
-                    }
-                  }}
-                  error={errors.cnic}
-                  required
-                />
+              {/* SECTION 2: Home Address */}
+              <div className="pt-2">
+                <div className="flex items-center gap-2 mb-3">
+                  <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Home Address
+                  </h2>
+                  <div className="flex-1 h-px bg-slate-100"></div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-4">
+                  {/* Block Field */}
+                  <div>
+                    <label htmlFor="block" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Block / Sector <span className="text-red-500">*</span>
+                    </label>
+                    <InputField
+                      id="block"
+                      type="text"
+                      placeholder="e.g., Block B or Sector G-10"
+                      value={formData.block}
+                      onChange={(e) => {
+                        setFormData({ ...formData, block: e.target.value });
+                        if (errors.block) {
+                          setErrors({ ...errors, block: '' });
+                        }
+                      }}
+                      error={errors.block}
+                      className="h-11 text-sm border-slate-300 focus:border-blue-500 focus:ring-blue-100"
+                      required
+                    />
+                  </div>
+
+                  {/* Street Field */}
+                  <div>
+                    <label htmlFor="street" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Street <span className="text-red-500">*</span>
+                    </label>
+                    <InputField
+                      id="street"
+                      type="text"
+                      placeholder="e.g., Street 14"
+                      value={formData.street}
+                      onChange={(e) => {
+                        setFormData({ ...formData, street: e.target.value });
+                        if (errors.street) {
+                          setErrors({ ...errors, street: '' });
+                        }
+                      }}
+                      error={errors.street}
+                      className="h-11 text-sm border-slate-300 focus:border-blue-500 focus:ring-blue-100"
+                      required
+                    />
+                  </div>
+
+                  {/* House Number Field */}
+                  <div>
+                    <label htmlFor="houseNumber" className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      House / Flat No. <span className="text-red-500">*</span>
+                    </label>
+                    <InputField
+                      id="houseNumber"
+                      type="text"
+                      placeholder="e.g., House 25"
+                      value={formData.houseNumber}
+                      onChange={(e) => {
+                        setFormData({ ...formData, houseNumber: e.target.value });
+                        if (errors.houseNumber) {
+                          setErrors({ ...errors, houseNumber: '' });
+                        }
+                      }}
+                      error={errors.houseNumber}
+                      className="h-11 text-sm border-slate-300 focus:border-blue-500 focus:ring-blue-100"
+                      required
+                    />
+                  </div>
+                </div>
               </div>
 
-              {/* Phone Number Field */}
-              <div>
-                <label htmlFor="phoneNumber" className="label-field">
-                  Phone Number
+              {/* SECTION 3: Document Upload (Full Width, 150-170px Taller, Soft Tint Badge) */}
+              <div className="pt-2">
+                <label htmlFor="document" className="block text-xs font-semibold text-slate-700 mb-2">
+                  Upload Proof of Residence (CNIC, Utility Bill, or Allotment Letter) <span className="text-red-500">*</span>
                 </label>
-                <InputField
-                  id="phoneNumber"
-                  type="tel"
-                  placeholder="e.g., 0300-1234567"
-                  value={formData.phoneNumber}
-                  onChange={(e) => {
-                    setFormData({ ...formData, phoneNumber: e.target.value });
-                    if (errors.phoneNumber) {
-                      setErrors({ ...errors, phoneNumber: '' });
-                    }
-                  }}
-                  error={errors.phoneNumber}
-                  required
-                />
-              </div>
-
-              {/* Email Field */}
-              <div>
-                <label htmlFor="email" className="label-field">
-                  Email Address
-                </label>
-                <InputField
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={formData.email}
-                  onChange={(e) => {
-                    setFormData({ ...formData, email: e.target.value });
-                    if (errors.email) {
-                      setErrors({ ...errors, email: '' });
-                    }
-                  }}
-                  error={errors.email}
-                  required
-                />
-              </div>
-
-              {/* Block Field */}
-              <div>
-                <label htmlFor="block" className="label-field">
-                  Block / Phase
-                </label>
-                <InputField
-                  id="block"
-                  type="text"
-                  placeholder="e.g., Block A, Phase 1"
-                  value={formData.block}
-                  onChange={(e) => {
-                    setFormData({ ...formData, block: e.target.value });
-                    if (errors.block) {
-                      setErrors({ ...errors, block: '' });
-                    }
-                  }}
-                  error={errors.block}
-                  required
-                />
-              </div>
-
-              {/* House Number Field */}
-              <div>
-                <label htmlFor="houseNumber" className="label-field">
-                  House Number
-                </label>
-                <InputField
-                  id="houseNumber"
-                  type="text"
-                  placeholder="e.g., House No. 12"
-                  value={formData.houseNumber}
-                  onChange={(e) => {
-                    setFormData({ ...formData, houseNumber: e.target.value });
-                    if (errors.houseNumber) {
-                      setErrors({ ...errors, houseNumber: '' });
-                    }
-                  }}
-                  error={errors.houseNumber}
-                  required
-                />
-              </div>
-
-              {/* Street Field */}
-              <div>
-                <label htmlFor="street" className="label-field">
-                  Street
-                </label>
-                <InputField
-                  id="street"
-                  type="text"
-                  placeholder="e.g., Street 4"
-                  value={formData.street}
-                  onChange={(e) => {
-                    setFormData({ ...formData, street: e.target.value });
-                    if (errors.street) {
-                      setErrors({ ...errors, street: '' });
-                    }
-                  }}
-                  error={errors.street}
-                  required
-                />
-              </div>
-
-              {/* Document Upload */}
-              <div>
-                <label htmlFor="document" className="label-field">
-                  Proof Document
-                </label>
-                <div className="relative">
+                <div className="relative w-full">
                   <input
                     id="document"
                     type="file"
@@ -325,43 +407,72 @@ const RegisterPage: React.FC = () => {
                   <label
                     htmlFor="document"
                     className={`
-                    flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg cursor-pointer
-                    transition-all duration-200
+                    w-full min-h-[160px] flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-xl cursor-pointer
+                    transition-all duration-200 group
                     ${errors.document
-                        ? 'border-red-300 bg-red-50'
+                        ? 'border-red-300 bg-red-50/60'
                         : formData.document
-                          ? 'border-blue-300 bg-blue-50'
-                          : 'border-gray-300 bg-gray-50 hover:border-blue-300 hover:bg-blue-50'
+                          ? 'border-blue-500 bg-blue-50/60'
+                          : 'border-slate-300 bg-slate-50/60 hover:border-blue-500 hover:bg-blue-50/40'
                       }
                   `}
                   >
-                    <Upload className={`w-6 h-6 mb-2 ${formData.document ? 'text-blue-600' : 'text-gray-400'
-                      }`} />
-                    <p className="text-sm font-medium text-gray-700">
-                      {formData.document ? formData.document.name : 'Click to upload'}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      PDF, DOC, DOCX, JPG, PNG (Max 5MB)
-                    </p>
+                    {/* Tinted Circular Badge for Upload Icon */}
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 transition-colors ${
+                      formData.document 
+                        ? 'bg-blue-100 text-blue-600' 
+                        : 'bg-slate-100 text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600'
+                    }`}>
+                      <Upload className="w-5 h-5" />
+                    </div>
+
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-slate-700">
+                        {formData.document ? (
+                          <span className="font-semibold text-blue-600">{formData.document.name}</span>
+                        ) : (
+                          <>
+                            <span className="font-bold text-blue-600 group-hover:underline">Click to upload</span>{' '}
+                            <span className="text-slate-600">or drag and drop</span>
+                          </>
+                        )}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        JPG, PNG, PDF, or DOC (Max 5MB)
+                      </p>
+                    </div>
                   </label>
                 </div>
                 {errors.document && (
-                  <p className="text-red-500 text-sm mt-1">{errors.document}</p>
+                  <p className="text-red-500 text-xs mt-1.5">{errors.document}</p>
                 )}
               </div>
 
-              {/* Submit Button */}
-              <Button
-                type="submit"
-                variant="primary"
-                size="lg"
-                fullWidth
-                isLoading={isLoading}
-                disabled={success}
-                className="mt-8"
-              >
-                Create Account
-              </Button>
+              {/* Submit Button (Full Width, 48px height, smooth hover & shadow) */}
+              <div className="pt-2">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  isLoading={isLoading}
+                  disabled={success}
+                  className="h-12 font-bold text-sm tracking-wide shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/30 transition-all rounded-xl"
+                >
+                  Create Account
+                </Button>
+                
+                <p className="text-center text-xs text-slate-500 mt-3 sm:hidden">
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => navigate(ROUTES.LOGIN)}
+                    className="text-blue-600 hover:underline font-semibold"
+                  >
+                    Log In
+                  </button>
+                </p>
+              </div>
             </form>
             </div>
           ) : (
