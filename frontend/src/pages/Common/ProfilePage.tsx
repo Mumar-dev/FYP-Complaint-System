@@ -39,7 +39,6 @@ const ProfilePage: React.FC = () => {
   const [profileEditMode, setProfileEditMode] = useState(false);
   const [uploadingPicture, setUploadingPicture] = useState(false);
 
-  // Get actual user data from profile
   const profileData = {
     fullName: user?.profile?.fullName || 'User',
     email: user?.email || '',
@@ -48,10 +47,16 @@ const ProfilePage: React.FC = () => {
     role: user?.role || 'resident',
   };
 
+  const [editForm, setEditForm] = useState({
+    fullName: profileData.fullName,
+    phone: profileData.phone,
+  });
+
   // Get department name
   const getDepartmentName = () => {
-    if (user?.role === 'staff' && user?.departmentId) {
-      const dept = departmentsData?.data?.find((d: any) => d._id === user.departmentId);
+    if ((user?.role === 'staff' || user?.role === 'department_head') && user?.departmentId) {
+      if (!departmentsData?.data) return 'Loading...';
+      const dept = departmentsData.data.find((d: any) => String(d._id) === String(user.departmentId));
       return dept?.name || 'Unassigned';
     }
     return '';
@@ -151,13 +156,30 @@ const ProfilePage: React.FC = () => {
   };
 
   const handleEditProfile = () => {
-    console.log('[Edit Profile] Opening profile editor for role:', user?.role);
-    setProfileEditMode(!profileEditMode);
+    setEditForm({
+      fullName: user?.profile?.fullName || '',
+      phone: user?.profile?.phone || ''
+    });
+    setProfileEditMode(true);
   };
 
-  const handleProfileSave = () => {
-    console.log('[Save Profile] Profile data saved:', profileData);
-    setProfileEditMode(false);
+  const handleProfileSave = async () => {
+    if (!editForm.fullName.trim()) {
+      showError("Full name is strictly required.");
+      return;
+    }
+    
+    try {
+      const formData = new FormData();
+      formData.append('fullName', editForm.fullName);
+      formData.append('phone', editForm.phone);
+      
+      await updateProfile(formData).unwrap();
+      showSuccess('Profile updated successfully!');
+      setProfileEditMode(false);
+    } catch (err: any) {
+      showError(err?.data?.message || 'Failed to update profile');
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -171,8 +193,8 @@ const ProfilePage: React.FC = () => {
     }
 
     // Validate file type
-    if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) {
-      showError('Only JPG and PNG files are allowed');
+    if (!['image/jpeg', 'image/png', 'image/jpg', 'image/webp'].includes(file.type)) {
+      showError('Only JPG, PNG, and WebP files are allowed');
       return;
     }
 
@@ -180,13 +202,34 @@ const ProfilePage: React.FC = () => {
     try {
       const formData = new FormData();
       formData.append('avatar', file);
+      formData.append('fullName', user?.profile?.fullName || 'User'); // Backend strictly requires fullName
       
       await updateProfile(formData).unwrap();
-      showSuccess('Profile picture updated successfully');
+      showSuccess('Profile picture updated successfully!');
     } catch (err: any) {
       showError(err?.data?.message || 'Failed to upload picture');
     } finally {
       setUploadingPicture(false);
+      const fileInput = document.getElementById('file-upload') as HTMLInputElement | null;
+      if (fileInput) fileInput.value = '';
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    setUploadingPicture(true);
+    try {
+      const formData = new FormData();
+      formData.append('deleteAvatar', 'true');
+      formData.append('fullName', user?.profile?.fullName || 'User');
+      
+      await updateProfile(formData).unwrap();
+      showSuccess('Profile picture removed successfully');
+    } catch (err: any) {
+      showError(err?.data?.message || 'Failed to remove picture');
+    } finally {
+      setUploadingPicture(false);
+      const fileInput = document.getElementById('file-upload') as HTMLInputElement | null;
+      if (fileInput) fileInput.value = '';
     }
   };
 
@@ -220,8 +263,18 @@ const ProfilePage: React.FC = () => {
             <div className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile Picture</h2>
               <div className="flex items-center gap-6">
-                <div className="w-24 h-24 rounded-full object-cover border-4 border-gray-200 bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-2xl font-bold">
-                  {profileData.fullName?.charAt(0)?.toUpperCase() || 'U'}
+                <div className="relative">
+                  {user?.profile?.avatar || user?.profile?.profileImage ? (
+                    <img 
+                      src={user.profile.avatar || user.profile.profileImage} 
+                      alt="Profile" 
+                      className="w-24 h-24 rounded-full object-cover border-4 border-gray-200"
+                    />
+                  ) : (
+                    <div className="w-24 h-24 rounded-full object-cover border-4 border-gray-200 bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-3xl font-bold uppercase">
+                      {profileData.fullName?.charAt(0) || 'U'}
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1">
                   <p className="text-sm text-gray-600 mb-4">
@@ -235,7 +288,7 @@ const ProfilePage: React.FC = () => {
                           e.preventDefault();
                           document.getElementById('file-upload')?.click();
                         }}
-                        disabled={uploadingPicture}
+                        disabled={uploadingPicture || isUpdatingProfile}
                         className="flex items-center gap-2 px-6 py-2.5 text-base bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Camera className="w-4 h-4" />
@@ -245,11 +298,22 @@ const ProfilePage: React.FC = () => {
                     <input
                       id="file-upload"
                       type="file"
-                      accept="image/jpeg,image/png,image/jpg"
+                      accept="image/jpeg,image/png,image/jpg,image/webp"
                       onChange={handleFileUpload}
-                      disabled={uploadingPicture}
+                      disabled={uploadingPicture || isUpdatingProfile}
                       className="hidden"
                     />
+
+                    {(user?.profile?.avatar || user?.profile?.profileImage) && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveAvatar}
+                        disabled={uploadingPicture || isUpdatingProfile}
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg transition-colors border border-rose-200/60 disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -282,7 +346,8 @@ const ProfilePage: React.FC = () => {
                   </label>
                   <input
                     type="text"
-                    defaultValue={profileData.fullName}
+                    value={profileEditMode ? editForm.fullName : profileData.fullName}
+                    onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
                     disabled={!profileEditMode}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-900 text-sm disabled:bg-gray-100"
                   />
@@ -311,7 +376,8 @@ const ProfilePage: React.FC = () => {
                   </label>
                   <input
                     type="tel"
-                    defaultValue={profileData.phone}
+                    value={profileEditMode ? editForm.phone : profileData.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
                     disabled={!profileEditMode}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-900 text-sm disabled:bg-gray-100"
                   />
@@ -336,12 +402,14 @@ const ProfilePage: React.FC = () => {
                 <div className="flex gap-3 mt-6 pt-6 border-t border-gray-200">
                   <Button
                     onClick={handleProfileSave}
+                    isLoading={isUpdatingProfile}
                   >
                     Save Changes
                   </Button>
                   <Button
                     variant="secondary"
                     onClick={() => setProfileEditMode(false)}
+                    disabled={isUpdatingProfile}
                   >
                     Cancel
                   </Button>
@@ -357,7 +425,7 @@ const ProfilePage: React.FC = () => {
                 <Building2 className="w-5 h-5" />
                 {user?.role === 'resident' && 'Resident Information'}
                 {user?.role === 'staff' && 'Staff Information'}
-                {user?.role === 'department' && 'Department Information'}
+                {user?.role === 'department_head' && 'Department Information'}
                 {(user?.role === 'admin' || user?.role === 'superadmin') && 'System Role Information'}
               </h2>
 
@@ -371,7 +439,7 @@ const ProfilePage: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        defaultValue={(roleSpecificData as any).cnic}
+                        value={(roleSpecificData as any).cnic}
                         disabled
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900 text-sm"
                       />
@@ -388,7 +456,7 @@ const ProfilePage: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        defaultValue={(roleSpecificData as any).cnic}
+                        value={(roleSpecificData as any).cnic}
                         disabled
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900 text-sm"
                       />
@@ -399,7 +467,7 @@ const ProfilePage: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        defaultValue={(roleSpecificData as any).phone}
+                        value={(roleSpecificData as any).phone}
                         disabled
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900 text-sm"
                       />
@@ -410,7 +478,7 @@ const ProfilePage: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        defaultValue={(roleSpecificData as any).department}
+                        value={(roleSpecificData as any).department}
                         disabled
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900 text-sm"
                       />
@@ -421,7 +489,7 @@ const ProfilePage: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        defaultValue={(roleSpecificData as any).departmentId}
+                        value={(roleSpecificData as any).departmentId}
                         disabled
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900 text-sm"
                       />
@@ -439,7 +507,7 @@ const ProfilePage: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        defaultValue={(roleSpecificData as any).departmentName}
+                        value={(roleSpecificData as any).departmentName}
                         disabled
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900 text-sm"
                       />
@@ -450,7 +518,7 @@ const ProfilePage: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        defaultValue={(roleSpecificData as any).departmentId}
+                        value={(roleSpecificData as any).departmentId}
                         disabled
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900 text-sm"
                       />
@@ -467,7 +535,7 @@ const ProfilePage: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        defaultValue={(roleSpecificData as any).systemRole}
+                        value={(roleSpecificData as any).systemRole}
                         disabled
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900 text-sm"
                       />
@@ -478,7 +546,7 @@ const ProfilePage: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        defaultValue={(roleSpecificData as any).permissionLevel}
+                        value={(roleSpecificData as any).permissionLevel}
                         disabled
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900 text-sm"
                       />
