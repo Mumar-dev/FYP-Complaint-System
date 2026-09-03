@@ -5,6 +5,8 @@ import { ROUTES } from '@constants/index';
 import Card from '@components/Common/Card';
 import Button from '@components/Common/Button';
 import { PageMeta } from '@components/Common/PageMeta';
+import { showSuccess } from '@/utils/toast';
+import axios from 'axios';
 
 const VerifyOTPPage: React.FC = () => {
   const navigate = useNavigate();
@@ -68,12 +70,15 @@ const VerifyOTPPage: React.FC = () => {
     }
 
     setIsLoading(true);
-    // Simulate API verification
-    setTimeout(() => {
+    try {
+      await axios.post('http://localhost:5000/api/auth/verify-otp', { email, otp: otp.join('') });
+      showSuccess('OTP Verified!');
+      navigate(ROUTES.RESET_PASSWORD, { state: { email, otp: otp.join('') } });
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Invalid or expired OTP');
+    } finally {
       setIsLoading(false);
-      // Navigate to login or reset password page based on the flow
-      navigate(ROUTES.LOGIN, { state: { message: 'Password reset successful. Please login.' } });
-    }, 1000);
+    }
   };
 
   return (
