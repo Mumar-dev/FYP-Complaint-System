@@ -1,11 +1,21 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Users, AlertCircle, TrendingUp, CheckCircle2, Loader } from 'lucide-react';
+import {
+  ClipboardList,
+  AlertCircle,
+  TrendingUp,
+  CheckCircle2,
+  Loader,
+  Users,
+  BarChart3,
+  Download,
+  ArrowRight,
+  ShieldAlert,
+  ChevronRight,
+} from 'lucide-react';
 import { useAuth } from '@hooks/useAuth';
-import { Button, Card, StatusBadge } from '@components/Common';
 import { ROUTES } from '@constants/index';
 import { useNavigate } from 'react-router-dom';
-import { useGetDepartmentByIdQuery, useGetDepartmentStaffQuery } from '@/features/department/department.api';
-import { useGetComplaintsQuery } from '@/features/complaint/complaint.api';
+import axios from 'axios';
 
 interface StaffMember {
   _id: string;
@@ -13,6 +23,8 @@ interface StaffMember {
     fullName: string;
   };
   email: string;
+  role?: string;
+  status?: string;
 }
 
 interface DepartmentData {
@@ -32,94 +44,135 @@ interface ComplaintStats {
 const DepartmentDashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  
-  const { data: deptData, isLoading: loadingDept, error: errorDept } = useGetDepartmentByIdQuery(
-    user?.departmentId as string,
-    { skip: !user?.departmentId }
-  );
+  const [departmentData, setDepartmentData] = useState<DepartmentData | null>(null);
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
+  const [complaintStats, setComplaintStats] = useState<ComplaintStats>({
+    total: 0,
+    pending: 0,
+    inProgress: 0,
+    completed: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const { data: staffData, isLoading: loadingStaff } = useGetDepartmentStaffQuery(
-    user?.departmentId as string,
-    { skip: !user?.departmentId }
-  );
+  // Fetch department data
+  useEffect(() => {
+    const fetchDepartmentData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
 
-  const { data: complaintsData, isLoading: loadingComplaints } = useGetComplaintsQuery();
+        if (!user?.departmentId) {
+          setError('No department assigned to user');
+          setLoading(false);
+          return;
+        }
 
-  const loading = loadingDept || loadingStaff || loadingComplaints;
-  const error = errorDept ? 'Failed to load department data' : null;
+        // Fetch department details
+        const deptRes = await axios.get(
+          `http://localhost:5000/api/departments/${user.departmentId}`,
+          { withCredentials: true }
+        );
+        setDepartmentData(deptRes.data.data);
 
-  const departmentData = deptData?.data;
-  const staffMembers = staffData?.data || [];
-  
-  const complaintStats = useMemo(() => {
-    const allComplaints = complaintsData?.data || [];
-    const deptComplaints = allComplaints.filter(
-      (c: any) => c.departmentId === user?.departmentId
-    );
+        // Fetch department staff
+        const staffRes = await axios.get(
+          `http://localhost:5000/api/departments/${user.departmentId}/staff`,
+          { withCredentials: true }
+        );
+        setStaffMembers(staffRes.data.data || []);
 
-    return {
-      total: deptComplaints.length,
-      pending: deptComplaints.filter((c: any) => c.status === 'pending_assignment' || c.status === 'pending').length,
-      inProgress: deptComplaints.filter((c: any) => c.status === 'in_progress').length,
-      completed: deptComplaints.filter((c: any) => c.status === 'resolved' || c.status === 'closed').length,
+        // Fetch complaints for this department
+        const complaintsRes = await axios.get(
+          `http://localhost:5000/api/complaints`,
+          { withCredentials: true }
+        );
+
+        const allComplaints = complaintsRes.data.data || [];
+        const deptComplaints = allComplaints.filter(
+          (c: any) => c.departmentId === user.departmentId
+        );
+
+        setComplaintStats({
+          total: deptComplaints.length,
+          pending: deptComplaints.filter((c: any) => c.status === 'pending').length,
+          inProgress: deptComplaints.filter((c: any) => c.status === 'in_progress').length,
+          completed: deptComplaints.filter((c: any) => c.status === 'completed').length,
+        });
+
+        setLoading(false);
+      } catch (err: any) {
+        console.error('Error fetching department data:', err);
+        setError(err.response?.data?.message || 'Failed to load department data');
+        setLoading(false);
+      }
     };
-  }, [complaintsData, user?.departmentId]);
 
-  // Get department's staff
-  const topStaff = useMemo(() => {
-    return staffMembers.map((staff) => ({
-      id: staff._id,
-      name: staff.profile.fullName,
-      position: 'Staff Member',
-      assignedCount: 0,
-      completedCount: 0,
-    }));
-  }, [staffMembers]);
+    fetchDepartmentData();
+  }, [user?.departmentId]);
+
+  // Helper for staff initials
+  const getInitials = (name: string) => {
+    if (!name) return 'S';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  // Avatar pastel colors cycling
+  const avatarColors = [
+    'bg-blue-100 text-blue-700 border-blue-200',
+    'bg-emerald-100 text-emerald-700 border-emerald-200',
+    'bg-indigo-100 text-indigo-700 border-indigo-200',
+    'bg-purple-100 text-purple-700 border-purple-200',
+    'bg-teal-100 text-teal-700 border-teal-200',
+    'bg-sky-100 text-sky-700 border-sky-200',
+  ];
 
   // Calculate stats from real data
   const stats = useMemo(() => {
-    const efficiency = complaintStats.total > 0 
-      ? Math.round((complaintStats.completed / complaintStats.total) * 100) 
-      : 0;
-
     return [
       {
         label: 'Total Complaints',
         value: complaintStats.total.toString(),
-        icon: Users,
-        color: 'bg-blue-100',
-        textColor: 'text-blue-700',
+        icon: ClipboardList,
+        bgColor: 'bg-blue-50',
+        textColor: 'text-blue-600',
+        borderColor: 'border-blue-100',
       },
       {
         label: 'Pending',
         value: complaintStats.pending.toString(),
         icon: AlertCircle,
-        color: 'bg-red-100',
-        textColor: 'text-red-700',
+        bgColor: 'bg-rose-50',
+        textColor: 'text-rose-600',
+        borderColor: 'border-rose-100',
       },
       {
         label: 'In Progress',
         value: complaintStats.inProgress.toString(),
         icon: TrendingUp,
-        color: 'bg-yellow-100',
-        textColor: 'text-yellow-700',
+        bgColor: 'bg-amber-50',
+        textColor: 'text-amber-600',
+        borderColor: 'border-amber-100',
       },
       {
         label: 'Completed',
         value: complaintStats.completed.toString(),
         icon: CheckCircle2,
-        color: 'bg-green-100',
-        textColor: 'text-green-700',
+        bgColor: 'bg-emerald-50',
+        textColor: 'text-emerald-600',
+        borderColor: 'border-emerald-100',
       },
     ];
   }, [complaintStats]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <Loader className="animate-spin h-12 w-12 mx-auto text-primary-600 mb-4" />
-          <p className="text-secondary-600">Loading department data...</p>
+          <Loader className="animate-spin h-10 w-10 mx-auto text-blue-600 mb-3" />
+          <p className="text-sm font-medium text-slate-500">Loading department overview...</p>
         </div>
       </div>
     );
@@ -127,111 +180,204 @@ const DepartmentDashboardPage: React.FC = () => {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card variant="md" className="p-6 bg-red-50 border-red-200">
-          <AlertCircle className="w-12 h-12 text-red-600 mx-auto mb-4" />
-          <p className="text-red-700 font-semibold">{error}</p>
-        </Card>
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="max-w-md w-full bg-white border border-rose-200 rounded-2xl p-6 text-center shadow-sm">
+          <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3">
+            <ShieldAlert className="w-6 h-6" />
+          </div>
+          <h3 className="text-base font-semibold text-slate-900 mb-1">Unable to Load Dashboard</h3>
+          <p className="text-sm text-slate-500">{error}</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Page Header */}
       <div>
-        <h1 className="text-3xl font-bold text-secondary-900">
+        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
           {departmentData?.name || 'Department'} Department
         </h1>
-        <p className="text-secondary-600 mt-2">Department overview and key metrics</p>
+        <p className="text-sm text-slate-500 mt-1">
+          Department overview, key performance metrics, and staff operations
+        </p>
       </div>
 
-      {/* Stats Grid */}
+      {/* 1. 4 KPI Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat, index) => {
           const Icon = stat.icon;
           return (
-            <Card key={index} variant="md" className="p-6">
-              <div className="flex items-center justify-between">
+            <div
+              key={index}
+              className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-sm text-secondary-500 mb-2">{stat.label}</p>
-                  <p className="text-3xl font-bold text-secondary-900">{stat.value}</p>
+                  <p className="text-sm font-medium text-slate-500">{stat.label}</p>
+                  <p className="text-3xl font-bold text-slate-900 mt-1 tracking-tight">
+                    {stat.value}
+                  </p>
                 </div>
-                <div className={`p-3 rounded-lg ${stat.color}`}>
-                  <Icon className={`w-6 h-6 ${stat.textColor}`} />
+                <div
+                  className={`w-11 h-11 rounded-xl flex items-center justify-center ${stat.bgColor} ${stat.textColor} border ${stat.borderColor}`}
+                >
+                  <Icon className="w-5 h-5" />
                 </div>
               </div>
-            </Card>
+            </div>
           );
         })}
       </div>
 
-      {/* Staff Members */}
-      <Card variant="md" className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-secondary-900">
-            Staff Members ({staffMembers.length})
-          </h2>
-          <Button
-            variant="primary"
+      {/* 2. Sleek Quick Actions (Positioned above staff list) */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-semibold text-slate-900">Quick Actions</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Action 1: Manage Staff */}
+          <button
             onClick={() => navigate(ROUTES.DEPARTMENT_STAFF)}
+            className="group flex items-center justify-between p-4 bg-white border border-slate-200/80 rounded-xl hover:border-blue-300 hover:bg-blue-50/30 transition-all text-left shadow-sm hover:shadow"
           >
-            View All Staff
-          </Button>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                <Users className="w-5 h-5" />
+              </div>
+              <span className="text-sm font-semibold text-slate-900 group-hover:text-blue-700 transition-colors">
+                Manage Staff
+              </span>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
+          </button>
+
+          {/* Action 2: View Complaints */}
+          <button
+            onClick={() => navigate(ROUTES.DEPARTMENT_COMPLAINTS)}
+            className="group flex items-center justify-between p-4 bg-white border border-slate-200/80 rounded-xl hover:border-blue-300 hover:bg-blue-50/30 transition-all text-left shadow-sm hover:shadow"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center group-hover:bg-amber-100 transition-colors">
+                <ClipboardList className="w-5 h-5" />
+              </div>
+              <span className="text-sm font-semibold text-slate-900 group-hover:text-blue-700 transition-colors">
+                View Complaints
+              </span>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
+          </button>
+
+          {/* Action 3: Performance Reports */}
+          <button
+            onClick={() => navigate(ROUTES.DEPARTMENT_STAFF_PERFORMANCE)}
+            className="group flex items-center justify-between p-4 bg-white border border-slate-200/80 rounded-xl hover:border-blue-300 hover:bg-blue-50/30 transition-all text-left shadow-sm hover:shadow"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center group-hover:bg-purple-100 transition-colors">
+                <BarChart3 className="w-5 h-5" />
+              </div>
+              <span className="text-sm font-semibold text-slate-900 group-hover:text-blue-700 transition-colors">
+                Performance Reports
+              </span>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
+          </button>
+
+          {/* Action 4: Export Report */}
+          <button
+            onClick={() => navigate(ROUTES.DEPARTMENT_STAFF_PERFORMANCE)}
+            className="group flex items-center justify-between p-4 bg-white border border-slate-200/80 rounded-xl hover:border-blue-300 hover:bg-blue-50/30 transition-all text-left shadow-sm hover:shadow"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-100 transition-colors">
+                <Download className="w-5 h-5" />
+              </div>
+              <span className="text-sm font-semibold text-slate-900 group-hover:text-blue-700 transition-colors">
+                Export Report
+              </span>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
+          </button>
+        </div>
+      </div>
+
+      {/* 3. Staff Members Section (Compact Grid preview, max 6 items) */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">
+              Staff Members{' '}
+              <span className="text-slate-400 font-normal text-sm ml-1">
+                ({staffMembers.length})
+              </span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Active personnel assigned to {departmentData?.name || 'this department'}
+            </p>
+          </div>
+          <button
+            onClick={() => navigate(ROUTES.DEPARTMENT_STAFF)}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50/80 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <span>View All Staff</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
 
         {staffMembers.length > 0 ? (
-          <div className="space-y-4">
-            {topStaff.slice(0, 5).map((staff) => (
-              <div
-                key={staff.id}
-                className="flex items-center justify-between p-4 bg-secondary-50 rounded-lg border border-secondary-200"
-              >
-                <div className="flex-1">
-                  <h3 className="font-semibold text-secondary-900">{staff.name}</h3>
-                  <p className="text-sm text-secondary-600">{staff.position}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {staffMembers.slice(0, 6).map((staff, idx) => {
+              const fullName = staff.profile?.fullName || 'Staff Member';
+              const initials = getInitials(fullName);
+              const colorClass = avatarColors[idx % avatarColors.length];
+
+              return (
+                <div
+                  key={staff._id}
+                  onClick={() => navigate(ROUTES.DEPARTMENT_STAFF)}
+                  className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200/70 bg-slate-50/40 hover:bg-white hover:border-blue-200 hover:shadow-xs transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-10 h-10 rounded-full font-semibold text-xs flex items-center justify-center border shrink-0 ${colorClass}`}
+                    >
+                      {initials}
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-sm text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+                        {fullName}
+                      </h3>
+                      <p className="text-xs text-slate-500 truncate">
+                        {staff.role === 'department_head'
+                          ? 'Department Head'
+                          : staff.role === 'supervisor'
+                          ? 'Supervisor'
+                          : 'Staff Member'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/60 shrink-0 ml-2">
+                    Active
+                  </span>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
-          <div className="text-center py-8">
-            <Users className="w-12 h-12 text-secondary-300 mx-auto mb-2" />
-            <p className="text-secondary-600">No staff members assigned yet</p>
+          <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl">
+            <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-2 text-slate-400">
+              <Users className="w-6 h-6" />
+            </div>
+            <p className="text-sm font-medium text-slate-700">No staff members assigned yet</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Add personnel from the Manage Staff section to get started.
+            </p>
           </div>
         )}
-      </Card>
-
-      {/* Quick Actions */}
-      <Card variant="md" className="p-6 bg-gradient-to-r from-primary-50 to-blue-50 border-primary-200">
-        <h2 className="text-lg font-bold text-secondary-900 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <Button
-            variant="primary"
-            fullWidth
-            onClick={() => navigate(ROUTES.DEPARTMENT_STAFF)}
-          >
-            Manage Staff
-          </Button>
-          <Button
-            variant="outline"
-            fullWidth
-            onClick={() => navigate(ROUTES.DEPARTMENT_COMPLAINTS)}
-          >
-            View Complaints
-          </Button>
-          <Button
-            variant="outline"
-            fullWidth
-            onClick={() => navigate(ROUTES.DEPARTMENT_PERFORMANCE)}
-          >
-            View Reports
-          </Button>
-          <Button variant="outline" fullWidth>
-            Generate Report
-          </Button>
-        </div>
-      </Card>
+      </div>
     </div>
   );
 };
