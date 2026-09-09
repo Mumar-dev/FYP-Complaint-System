@@ -1,15 +1,37 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useGetComplaintsQuery } from '../../features/complaint/complaint.api';
 import { ROUTES } from '../../constants';
+import { Plus, Clock, CheckCircle2, AlertTriangle, ArrowUpRight, FileText } from 'lucide-react';
 
 const STATUS_STAGES = [
-  { key: 'pending_assignment', label: 'Submitted' },
+  { key: 'submitted', label: 'Submitted' },
   { key: 'assigned', label: 'Assigned' },
   { key: 'in_progress', label: 'In Progress' },
-  { key: 'resolved', label: 'Resolved' },
-  { key: 'closed', label: 'Closed' }
+  { key: 'resolved', label: 'Resolved' }
 ];
+
+const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string }> = {
+  submitted: { label: 'Awaiting Assignment', bg: 'bg-amber-50 border-amber-200/60', text: 'text-amber-800', dot: 'bg-amber-500' },
+  pending: { label: 'Awaiting Assignment', bg: 'bg-amber-50 border-amber-200/60', text: 'text-amber-800', dot: 'bg-amber-500' },
+  pending_assignment: { label: 'Awaiting Assignment', bg: 'bg-amber-50 border-amber-200/60', text: 'text-amber-800', dot: 'bg-amber-500' },
+  assigned: { label: 'Assigned', bg: 'bg-blue-50 border-blue-200/60', text: 'text-blue-800', dot: 'bg-blue-500' },
+  in_progress: { label: 'In Progress', bg: 'bg-blue-50 border-blue-200/60', text: 'text-blue-800', dot: 'bg-blue-500' },
+  'in-progress': { label: 'In Progress', bg: 'bg-blue-50 border-blue-200/60', text: 'text-blue-800', dot: 'bg-blue-500' },
+  resolved: { label: 'Resolved', bg: 'bg-emerald-50 border-emerald-200/60', text: 'text-emerald-800', dot: 'bg-emerald-500' },
+  completed: { label: 'Resolved', bg: 'bg-emerald-50 border-emerald-200/60', text: 'text-emerald-800', dot: 'bg-emerald-500' },
+  closed: { label: 'Closed', bg: 'bg-gray-100 border-gray-200', text: 'text-gray-700', dot: 'bg-gray-400' },
+  rejected: { label: 'Declined', bg: 'bg-rose-50 border-rose-200/60', text: 'text-rose-800', dot: 'bg-rose-500' },
+  cancelled: { label: 'Cancelled', bg: 'bg-gray-100 border-gray-200', text: 'text-gray-600', dot: 'bg-gray-400' },
+  reopened: { label: 'Reopened', bg: 'bg-purple-50 border-purple-200/60', text: 'text-purple-800', dot: 'bg-purple-500' },
+};
+
+const PRIORITY_CONFIG: Record<string, { label: string; text: string; bg: string }> = {
+  low: { label: 'Low', text: 'text-gray-600', bg: 'bg-gray-100' },
+  medium: { label: 'Medium', text: 'text-blue-700', bg: 'bg-blue-50' },
+  high: { label: 'High', text: 'text-amber-700', bg: 'bg-amber-50' },
+  critical: { label: 'Urgent', text: 'text-rose-700', bg: 'bg-rose-50' },
+};
 
 const DashboardPage: React.FC = () => {
   const { data: response, isLoading, isError, refetch } = useGetComplaintsQuery();
@@ -17,27 +39,32 @@ const DashboardPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="p-8 space-y-6 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="space-y-6">
+        <div className="h-10 bg-gray-200/70 animate-pulse rounded-xl w-64"></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-32 bg-gray-100 animate-pulse rounded-2xl"></div>
+            <div key={i} className="h-28 bg-white border border-gray-100 animate-pulse rounded-2xl"></div>
           ))}
         </div>
-        <div className="h-96 bg-gray-100 animate-pulse rounded-2xl mt-8"></div>
+        <div className="h-64 bg-white border border-gray-100 animate-pulse rounded-2xl"></div>
       </div>
     );
   }
 
   if (isError || !response?.success) {
     return (
-      <div className="p-8 flex flex-col items-center justify-center min-h-[400px]">
-        <div className="text-red-500 bg-red-50 p-6 rounded-xl text-center max-w-md border border-red-100">
-          <h3 className="text-lg font-bold mb-2">Failed to load dashboard</h3>
-          <p className="text-sm opacity-80 mb-4">There was an error retrieving your complaints.</p>
-          <button onClick={() => refetch()} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium shadow-sm">
-            Try Again
-          </button>
+      <div className="flex flex-col items-center justify-center min-h-[360px] p-8 text-center bg-white border border-gray-100 rounded-2xl shadow-xs">
+        <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mb-3">
+          <AlertTriangle className="w-6 h-6" />
         </div>
+        <h3 className="text-base font-bold text-gray-900 mb-1">Unable to Load Dashboard</h3>
+        <p className="text-sm text-gray-500 mb-4 max-w-sm">We ran into an issue retrieving your latest complaint records. Please try again.</p>
+        <button
+          onClick={() => refetch()}
+          className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition font-semibold text-xs shadow-xs"
+        >
+          Try Again
+        </button>
       </div>
     );
   }
@@ -48,26 +75,28 @@ const DashboardPage: React.FC = () => {
   const stats = complaints.reduce(
     (acc: any, curr: any) => {
       acc.total += 1;
-      
-      const isActive = ['pending', 'pending_assignment', 'assigned', 'in_progress'].includes(curr.status);
+      const rawStatus = (curr.status || '').toLowerCase();
+      const isActive = ['pending', 'pending_assignment', 'submitted', 'assigned', 'in_progress', 'in-progress'].includes(rawStatus);
       if (isActive) acc.active += 1;
-      
-      if (curr.status === 'resolved' || curr.status === 'closed') acc.resolved += 1;
-      
+      if (rawStatus === 'resolved' || rawStatus === 'completed' || rawStatus === 'closed') acc.resolved += 1;
       if (curr.slaBreached) acc.slaBreached += 1;
-      
       return acc;
     },
     { total: 0, active: 0, resolved: 0, slaBreached: 0 }
   );
 
   const getSLAStatus = (complaint: any) => {
-    if (complaint.status === 'resolved' || complaint.status === 'closed') {
-      return { label: 'Completed', color: 'text-gray-500', bg: 'bg-gray-100' };
+    const rawStatus = (complaint.status || '').toLowerCase();
+    if (rawStatus === 'resolved' || rawStatus === 'completed' || rawStatus === 'closed') {
+      return { label: 'Completed', color: 'text-gray-600', bg: 'bg-gray-100' };
     }
     
     if (complaint.slaBreached) {
-      return { label: 'Breached', color: 'text-red-700', bg: 'bg-red-100 border border-red-200' };
+      return { label: 'Overdue', color: 'text-rose-700', bg: 'bg-rose-50 border border-rose-200/60' };
+    }
+
+    if (!complaint.slaDeadline) {
+      return { label: 'Standard', color: 'text-gray-600', bg: 'bg-gray-50' };
     }
 
     const now = new Date();
@@ -75,138 +104,205 @@ const DashboardPage: React.FC = () => {
     const hoursLeft = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60);
 
     if (hoursLeft <= 2 && hoursLeft > 0) {
-      return { label: 'Near Deadline', color: 'text-amber-700', bg: 'bg-amber-100 border border-amber-200' };
+      return { label: 'Due Soon', color: 'text-amber-700', bg: 'bg-amber-50 border border-amber-200/60' };
     }
 
-    return { label: 'On Track', color: 'text-emerald-700', bg: 'bg-emerald-50' };
+    return { label: 'On Schedule', color: 'text-emerald-700', bg: 'bg-emerald-50' };
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    if (!dateStr) return 'N/A';
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric'
     });
   };
 
-  const getProgressIndex = (status: string) => {
-    // Treat 'pending' the same as 'pending_assignment'
-    const s = status === 'pending' ? 'pending_assignment' : status;
-    const index = STATUS_STAGES.findIndex(stage => stage.key === s);
-    return index === -1 ? 0 : index;
+  const getProgressInfo = (status: string) => {
+    const s = (status || '').toLowerCase();
+    // Progress calculation based on requirements:
+    // submitted -> 25% (step index 0)
+    // assigned -> 50% (step index 1)
+    // in_progress / under_verification -> 75% (step index 2)
+    // resolved / closed / completed -> 100% (step index 3)
+    if (s === 'resolved' || s === 'completed' || s === 'closed') {
+      return { stepIndex: 3, percentage: 100 };
+    }
+    if (s === 'in_progress' || s === 'in-progress' || s === 'under_verification') {
+      return { stepIndex: 2, percentage: 75 };
+    }
+    if (s === 'assigned') {
+      return { stepIndex: 1, percentage: 50 };
+    }
+    // Default: submitted, pending, pending_assignment
+    return { stepIndex: 0, percentage: 25 };
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-8 animate-in fade-in duration-300">
-      
-      <div className="flex justify-between items-end">
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Resident Dashboard</h1>
-          <p className="text-gray-500 text-sm mt-1 font-medium">Track your community requests and issues.</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Welcome back. Monitor your active service requests and community issues.
+          </p>
         </div>
-        <button 
-          onClick={() => navigate(ROUTES.RESIDENT_SUBMIT_COMPLAINT)}
-          className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl shadow-md transition-all"
+        <Link
+          to={ROUTES.RESIDENT_SUBMIT_COMPLAINT}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-xs hover:shadow-sm transition-all self-start sm:self-auto"
         >
-          + New Complaint
-        </button>
+          <Plus className="w-4 h-4" />
+          <span>Submit a Complaint</span>
+        </Link>
       </div>
 
-      {/* Top Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white border border-gray-200/60 shadow-sm rounded-2xl p-6 relative overflow-hidden">
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Total</p>
-          <p className="text-4xl font-black text-gray-900 tracking-tighter">{stats.total}</p>
+      {/* Top Clean Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-xs">
+          <p className="text-xs font-semibold text-gray-500 mb-1">Total Requests</p>
+          <p className="text-3xl font-bold text-gray-900 tracking-tight">{stats.total}</p>
         </div>
-        <div className="bg-white border border-blue-200/60 shadow-sm rounded-2xl p-6 relative overflow-hidden">
-          <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-1">Active</p>
-          <p className="text-4xl font-black text-gray-900 tracking-tighter">{stats.active}</p>
+        <div className="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-xs">
+          <p className="text-xs font-semibold text-blue-600 mb-1">In Progress</p>
+          <p className="text-3xl font-bold text-gray-900 tracking-tight">{stats.active}</p>
         </div>
-        <div className="bg-white border border-emerald-200/60 shadow-sm rounded-2xl p-6 relative overflow-hidden">
-          <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-1">Resolved</p>
-          <p className="text-4xl font-black text-gray-900 tracking-tighter">{stats.resolved}</p>
+        <div className="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-xs">
+          <p className="text-xs font-semibold text-emerald-600 mb-1">Resolved</p>
+          <p className="text-3xl font-bold text-gray-900 tracking-tight">{stats.resolved}</p>
         </div>
-        <div className="bg-white border border-red-200/60 shadow-sm rounded-2xl p-6 relative overflow-hidden">
-          <p className="text-xs font-bold text-red-600 uppercase tracking-widest mb-1">SLA Breached</p>
-          <p className="text-4xl font-black text-gray-900 tracking-tighter">{stats.slaBreached}</p>
+        <div className="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-xs">
+          <p className="text-xs font-semibold text-amber-600 mb-1">Pending Assignment</p>
+          <p className="text-3xl font-bold text-gray-900 tracking-tight">
+            {complaints.filter((c: any) => ['submitted', 'pending', 'pending_assignment'].includes((c.status || '').toLowerCase())).length}
+          </p>
         </div>
       </div>
 
-      {/* Complaints List */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-bold text-gray-900 tracking-tight mb-4">My Complaints</h2>
+      {/* Recent Complaints Section */}
+      <div className="space-y-4 pt-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-bold text-gray-900 tracking-tight">Recent Complaints</h2>
+          {complaints.length > 0 && (
+            <Link
+              to={ROUTES.RESIDENT_MY_COMPLAINTS}
+              className="text-xs font-semibold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"
+            >
+              <span>View Full History</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </Link>
+          )}
+        </div>
         
         {complaints.length === 0 ? (
-          <div className="bg-gray-50 border border-gray-100 rounded-2xl p-12 text-center text-gray-500 font-medium">
-            You haven't submitted any complaints yet.
+          <div className="bg-white border border-gray-100 rounded-2xl p-12 text-center shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-3">
+              <FileText className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-gray-900">No requests submitted yet</h3>
+            <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">
+              If you have any facility issues like plumbing, electrical, or maintenance, lodge a request and our team will assist you.
+            </p>
+            <Link
+              to={ROUTES.RESIDENT_SUBMIT_COMPLAINT}
+              className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Submit a Complaint</span>
+            </Link>
           </div>
         ) : (
-          complaints.map((complaint: any) => {
-            const sla = getSLAStatus(complaint);
-            const currentStageIndex = getProgressIndex(complaint.status);
+          <div className="space-y-3.5">
+            {complaints.slice(0, 5).map((complaint: any) => {
+              const rawStatus = (complaint.status || '').toLowerCase();
+              const statusInfo = STATUS_CONFIG[rawStatus] || {
+                label: complaint.status ? complaint.status.replace(/_/g, ' ') : 'Pending',
+                bg: 'bg-gray-50 border-gray-200',
+                text: 'text-gray-700',
+                dot: 'bg-gray-400'
+              };
 
-            return (
-              <div 
-                key={complaint._id}
-                onClick={() => navigate(ROUTES.RESIDENT_COMPLAINT_DETAIL.replace(':id', complaint._id))}
-                className="bg-white border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 rounded-2xl p-6 cursor-pointer transition-all duration-200"
-              >
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                  <div>
-                    <div className="flex items-center gap-3 mb-1">
-                      <h3 className="font-bold text-lg text-gray-900">{complaint.title}</h3>
-                      <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-sm ${
-                        complaint.priority === 'critical' ? 'text-red-700 bg-red-100' :
-                        complaint.priority === 'high' ? 'text-amber-700 bg-amber-100' :
-                        complaint.priority === 'medium' ? 'text-indigo-700 bg-indigo-100' : 'text-gray-700 bg-gray-100'
-                      }`}>
-                        {complaint.priority}
-                      </span>
+              const rawPriority = (complaint.priority || 'medium').toLowerCase();
+              const priorityInfo = PRIORITY_CONFIG[rawPriority] || {
+                label: complaint.priority || 'Medium',
+                text: 'text-gray-700',
+                bg: 'bg-gray-50'
+              };
+
+              const sla = getSLAStatus(complaint);
+              const { stepIndex: currentStageIndex, percentage: progressPercentage } = getProgressInfo(complaint.status);
+              const isResolvedState = ['resolved', 'completed', 'closed'].includes(rawStatus);
+
+              return (
+                <div 
+                  key={complaint._id}
+                  onClick={() => navigate(ROUTES.RESIDENT_COMPLAINT_DETAIL.replace(':id', complaint._id))}
+                  className="bg-white border border-gray-200/80 hover:border-blue-200/80 rounded-2xl p-5 shadow-xs hover:shadow-sm transition-all duration-150 cursor-pointer"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusInfo.bg} ${statusInfo.text}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`}></span>
+                          {statusInfo.label}
+                        </span>
+
+                        <span className={`px-2 py-0.5 rounded-md text-[11px] font-semibold ${priorityInfo.bg} ${priorityInfo.text}`}>
+                          {priorityInfo.label} Priority
+                        </span>
+
+                        {complaint.complaintId && (
+                          <span className="text-[11px] font-mono font-medium text-gray-400">
+                            #{complaint.complaintId}
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="font-bold text-base text-gray-900 tracking-tight pt-1">
+                        {complaint.title}
+                      </h3>
+                      <p className="text-xs text-gray-500 line-clamp-1">
+                        {complaint.description}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-4 text-xs font-medium text-gray-500">
-                      <span>ID: #{complaint._id.slice(-6).toUpperCase()}</span>
-                      <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                      <span>{formatDate(complaint.createdAt)}</span>
-                    </div>
-                  </div>
-                  
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Deadline</p>
-                    <div className="flex items-center justify-end gap-2">
-                      <span className="text-sm font-semibold text-gray-700">{formatDate(complaint.slaDeadline)}</span>
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider ${sla.bg} ${sla.color}`}>
+
+                    <div className="text-left sm:text-right flex sm:flex-col items-center sm:items-end justify-between gap-1 pt-1 sm:pt-0 border-t sm:border-t-0 border-gray-100">
+                      <span className="text-xs text-gray-400 font-medium">Submitted {formatDate(complaint.createdAt)}</span>
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${sla.bg} ${sla.color}`}>
                         {sla.label}
                       </span>
                     </div>
                   </div>
-                </div>
 
-                {/* Progress Bar */}
-                <div className="relative pt-2 pb-1">
-                  <div className="overflow-hidden h-1.5 flex rounded-full bg-gray-100 mb-2">
-                    <div 
-                      className={`h-full transition-all duration-500 ${
-                        complaint.status === 'resolved' || complaint.status === 'closed' ? 'bg-emerald-500' : 'bg-indigo-500'
-                      }`}
-                      style={{ width: `${Math.max(5, (currentStageIndex / (STATUS_STAGES.length - 1)) * 100)}%` }}
-                    ></div>
-                  </div>
-                  <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                    {STATUS_STAGES.map((stage, idx) => (
-                      <span 
-                        key={stage.key} 
-                        className={`text-center ${idx <= currentStageIndex ? 'text-indigo-600' : ''}`}
-                      >
-                        {stage.label}
+                  {/* Minimal Subtle Step Tracker */}
+                  <div className="pt-2 border-t border-gray-100">
+                    <div className="overflow-hidden h-1.5 flex rounded-full bg-gray-100 mb-2">
+                      <div 
+                        className={`h-full transition-all duration-500 ${
+                          isResolvedState ? 'bg-emerald-500' : 'bg-blue-600'
+                        }`}
+                        style={{ width: `${progressPercentage}%` }}
+                      ></div>
+                    </div>
+                    <div className="flex justify-between text-[11px] font-medium text-gray-400">
+                      <span className={currentStageIndex >= 0 ? (isResolvedState ? 'text-emerald-600 font-semibold' : 'text-blue-600 font-semibold') : ''}>
+                        Submitted
                       </span>
-                    ))}
+                      <span className={currentStageIndex >= 1 ? (isResolvedState ? 'text-emerald-600 font-semibold' : 'text-blue-600 font-semibold') : ''}>
+                        Assigned
+                      </span>
+                      <span className={currentStageIndex >= 2 ? (isResolvedState ? 'text-emerald-600 font-semibold' : 'text-blue-600 font-semibold') : ''}>
+                        In Progress
+                      </span>
+                      <span className={currentStageIndex >= 3 ? 'text-emerald-600 font-semibold' : ''}>
+                        Resolved
+                      </span>
+                    </div>
                   </div>
                 </div>
-
-              </div>
-            );
-          })
+              );
+            })}
+          </div>
         )}
       </div>
-
     </div>
   );
 };
