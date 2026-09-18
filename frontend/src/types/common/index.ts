@@ -1,5 +1,5 @@
 // User Roles
-export type UserRole = 'resident' | 'staff' | 'department_head' | 'admin' | 'superadmin';
+export type UserRole = 'resident' | 'staff' | 'supervisor' | 'department_head' | 'admin' | 'superadmin';
 
 export interface IAddress {
   block?: string;
