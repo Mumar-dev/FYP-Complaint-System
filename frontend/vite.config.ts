@@ -23,7 +23,7 @@ export default defineConfig({
     open: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://127.0.0.1:5000',
         changeOrigin: true,
         secure: false,
       }
@@ -34,6 +34,3 @@ export default defineConfig({
     sourcemap: false,
   }
 })
-# commit-marker: [2026-03-10 11:00:00] Configure Vite proxy for backend API requests
-# commit-marker: [2026-05-21 14:00:00] Refactor API proxy configuration in Vite config
-# commit-marker: [2026-06-07 13:45:00] Add proxy fix and update audit logs page UI
